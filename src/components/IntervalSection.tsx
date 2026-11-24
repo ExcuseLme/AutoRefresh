@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NumberStepper, SegmentedControl } from './ui';
 import { t } from '@/lib/i18n';
+import { parseIntInRange } from '@/lib/number-input';
 import { FIXED_PRESETS, type IntervalMode, type Options } from '@/lib/options';
 
 type PatchFn = (next: Partial<Options>) => Promise<{ ok: boolean; code?: string }>;
@@ -90,6 +91,7 @@ export function IntervalSection({ options, patch }: { options: Options; patch: P
                 min={1}
                 max={86400}
                 ariaLabel={t('aria_interval_seconds')}
+                name="customSeconds"
                 onSubmit={(v) => void applyCustom(v)}
                 autoFocus
               />
@@ -111,6 +113,7 @@ export function IntervalSection({ options, patch }: { options: Options; patch: P
               min={1}
               max={86400}
               ariaLabel={t('aria_random_min')}
+              name="randomMinSeconds"
               onCommit={(v) => void applyRandom('min', v)}
             />
             <LabeledInt
@@ -119,6 +122,7 @@ export function IntervalSection({ options, patch }: { options: Options; patch: P
               min={1}
               max={86400}
               ariaLabel={t('aria_random_max')}
+              name="randomMaxSeconds"
               onCommit={(v) => void applyRandom('max', v)}
             />
           </div>
@@ -145,6 +149,7 @@ export function IntervalSection({ options, patch }: { options: Options; patch: P
             min={1}
             max={86400}
             ariaLabel={t('aria_interval_seconds')}
+            name="customSeconds"
             onSubmit={(v) => void applyCustom(v)}
           />
           <p className="mt-2 text-[11px] text-[var(--muted-foreground)]">
@@ -216,6 +221,7 @@ function LabeledInt({
   min,
   max,
   ariaLabel,
+  name,
   onCommit,
 }: {
   label: string;
@@ -223,6 +229,7 @@ function LabeledInt({
   min: number;
   max: number;
   ariaLabel: string;
+  name: string;
   onCommit: (v: number) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
@@ -232,12 +239,11 @@ function LabeledInt({
 
   const commit = () => {
     setFocused(false);
-    const parsed = Number.parseInt(draft, 10);
-    if (!Number.isInteger(parsed)) {
+    const clamped = parseIntInRange(draft, min, max);
+    if (clamped === null) {
       setDraft(String(value));
       return;
     }
-    const clamped = Math.min(max, Math.max(min, parsed));
     setDraft(String(clamped));
     if (clamped !== value) onCommit(clamped);
   };
@@ -247,6 +253,8 @@ function LabeledInt({
       <span className="block text-[11px] text-[var(--muted-foreground)]">{label}</span>
       <input
         type="number"
+        name={name}
+        autoComplete="off"
         className="no-spinner tnum w-full bg-transparent text-base font-semibold text-[var(--foreground)] outline-none"
         aria-label={ariaLabel}
         value={shown}

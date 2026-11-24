@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { parseIntInRange } from '@/lib/number-input';
 
 /** 通用分段控件（docs/04 §4.1 / §4.2）。视觉对齐 ARP：圆角外壳 + 选中项白底 */
 export function SegmentedControl({
@@ -42,12 +43,13 @@ export function SegmentedControl({
   );
 }
 
-/** 居中大数字 + 自绘 −/+（docs/04 §4.1）。回车/失焦提交 */
+/** 踏步输入：居中大数字 + 自绘 −/+（docs/04 §4.1）。回车/失焦提交 */
 export function NumberStepper({
   value,
   min,
   max,
   ariaLabel,
+  name,
   onSubmit,
   autoFocus = false,
 }: {
@@ -55,6 +57,7 @@ export function NumberStepper({
   min: number;
   max: number;
   ariaLabel: string;
+  name: string;
   onSubmit: (v: number) => void;
   autoFocus?: boolean;
 }) {
@@ -63,12 +66,11 @@ export function NumberStepper({
   const shown = focused ? draft : String(value);
 
   const commit = (raw: string) => {
-    const parsed = Number.parseInt(raw, 10);
-    if (!Number.isInteger(parsed)) {
+    const clamped = parseIntInRange(raw, min, max);
+    if (clamped === null) {
       setDraft(String(value));
       return;
     }
-    const clamped = Math.min(max, Math.max(min, parsed));
     setDraft(String(clamped));
     if (clamped !== value) onSubmit(clamped);
   };
@@ -92,6 +94,8 @@ export function NumberStepper({
       </button>
       <input
         type="number"
+        name={name}
+        autoComplete="off"
         className="no-spinner tnum min-w-0 flex-1 bg-transparent text-center text-3xl font-bold text-[var(--foreground)] outline-none"
         aria-label={ariaLabel}
         value={shown}
@@ -168,15 +172,18 @@ export function Select<T extends string>({
   options,
   onChange,
   ariaLabel,
+  name,
 }: {
   value: T;
   options: { value: T; label: string }[];
   onChange: (v: T) => void;
   ariaLabel?: string;
+  name: string;
 }) {
   return (
     <div className="relative">
       <select
+        name={name}
         aria-label={ariaLabel}
         value={value}
         onChange={(e) => onChange(e.currentTarget.value as T)}

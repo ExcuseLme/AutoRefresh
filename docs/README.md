@@ -28,12 +28,16 @@ docs/
 
 | 项 | 状态 |
 | --- | --- |
-| 需求澄清（技术栈 / i18n / 面板形态 / XHR 语义 / 主机权限） | ✅ 已确认（见 `08` ADR-001/009/011 与 `README` 下方两处问答结论） |
+| 需求澄清（技术栈 / i18n / 面板形态 / XHR 语义 / 主机权限 / 整数秒） | ✅ 已确认（见 `08` ADR-001/009/011 与下方 QA 结论） |
 | 原扩展行为取证（面板 UI、选项、存储、引擎、内容脚本） | ✅ 已完成，见 `07` |
-| 设计文档落地 | ✅ 本次提交（`32dfb46`） |
-| 代码骨架 / 引擎 / UI / 内容脚本 | ⬜ 未开始（见 `09`） |
+| 设计文档落地 | ✅ `32dfb46` |
+| M0 骨架（WXT + manifest + 入口齐备，`pnpm build` 通过） | ✅ `34427b5` |
+| M1 面板 UI（单屏滚动、间隔/刷新类型/选项三段、视觉 token） | ✅ `34427b5` |
+| M2 引擎（offscreen 计时、token 守卫、alarms 兜底、SW 重启恢复） | ✅ `34427b5` |
+| M3 内容脚本（交互上报、XHR 自动点击、keep-active 注入与自愈） | ✅ `34427b5` |
+| M4 清理与验收（丢弃项检查脚本、vitest、体积 < 300KB） | ✅ 本轮 |
 
-已确认的四项决策（不再作为开放问题）：
+已确认的五项决策（不再作为开放问题）：
 
 - 技术栈：**WXT + React + TypeScript + Tailwind**（ADR-001）
 - 多语言：**保留 `_locales` 机制，只维护 `zh_CN`**（`06`）
@@ -41,13 +45,40 @@ docs/
 - XHR 刷新：**保留「自动点击元素选择器」输入框**（ADR-009）
 - 主机权限：**安装即申请 `<all_urls>`**（ADR-011）
 
-仍需确认的开放问题集中在 `08-decisions-and-risks.md` 的 **Open Questions**：
+Open Questions 的结论（已全部关闭）：
 
-- **OQ-1** 「用户交互时的刷新行为」与「用户交互时的更新行为」两条是否拆成"总开关 + 行为选择"（下文按此设计）。
-- **OQ-2** 运行中是否在面板显示「下次刷新 N 秒」（面板内文字，非页面内倒计时浮层）。
-- **OQ-3** 未在需求清单中、但影响刷新鲁棒性的「防止重新提交表单」是否加回。
-- **OQ-4** 徽章（badge）是否显示状态。
-- **OQ-5** 自定义间隔的小数位与最小可输入值。
+| OQ | 结论 |
+| --- | --- |
+| OQ-1 | 「用户交互时的刷新行为」= **一个总开关 + 三选一动作（停止 / 暂停 / 重新开始）**，不拆成两个独立开关 |
+| OQ-2 | 运行中在面板头部显示「**N 秒后刷新 · 第 M 次**」（面板文字，不是页面内浮层） |
+| OQ-3 | **不加**「防止重新提交表单」 |
+| OQ-4 | **显示**徽章：运行中绿点、暂停黄点、停止清空 |
+| OQ-5 | **只要整数**（用户明确要求）：所有间隔输入为 ≥1 的整数秒，上限 86400，拒绝小数 |
+| OQ-6 | 面板滚动位置**不做**持久化 |
+
+## 实现落盘位置（上手速查）
+
+```
+src/
+├── entrypoints/
+│   ├── background.ts       SW：会话状态机、消息路由、alarms 兜底、刷新流水线
+│   ├── content.ts          CS：交互上报 / AUTOCLICK / keep-active 自愈
+│   ├── offscreen/          HTML 入口：唯一的 setTimeout 宿主（ADR-004）
+│   └── popup/              React 面板（main.tsx + App.tsx）
+├── components/             Header / IntervalSection / RefreshTypeSection / OptionsSection / ui
+├── lib/                    options / validate / interval / url / session / storage / refresh / …
+└── assets/main.css         Tailwind + ARP 提取的 oklch 视觉 token
+
+public/
+├── _locales/zh_CN/messages.json   唯一语言包
+└── icon/                          16/32/48/96/128
+
+scripts/check-scope.mjs    docs/07 §5 丢弃项 grep 检查（T-50 的自动化版本）
+tests/                     vitest 单测（间隔算法、校验、URL/上限、状态机、整数解析）
+```
+
+验证入口：`pnpm verify`（= `compile` + `test` + `build` + `check:scope`）。
+
 
 ## 阅读顺序（给实现者）
 
@@ -73,3 +104,8 @@ docs/
 变更记录：
 
 - `2026-11-24` 初版：范围、架构、数据模型、UI、引擎、i18n、取证、决策、计划全部落地。
+- `2026-11-24` `34427b5`：M0–M3 实现落地（骨架 / 面板 / 引擎 / 内容脚本 + 55 个单测）。
+- `2026-11-24` 本轮：M4 收尾 —— 整数输入严格校验（OQ-5）、输入框 `name` 属性、
+  图标调色板压缩（体积 319KB → 297KB）、`status_loading` 首屏占位、
+  keep-active TTL 续期合并进伪活动定时器、i18n 占位符改为 Chrome 的 `$1` 语法、
+  截图留档 `docs/assets/reference/impl-*.png`、README 关闭全部 OQ。

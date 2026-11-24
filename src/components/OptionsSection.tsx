@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Select, SwitchRow } from './ui';
 
 import { t } from '@/lib/i18n';
+import { parseStrictInt } from '@/lib/number-input';
 import type { InteractionAction, Options, Redirection } from '@/lib/options';
 import { readOptionsCollapsed, writeOptionsCollapsed } from '@/lib/storage';
 
@@ -86,6 +87,7 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
                   value={options.refreshLimitCount}
                   min={1}
                   ariaLabel={t('aria_refresh_limit_count')}
+                  name="refreshLimitCount"
                   onCommit={(v) => void patch({ refreshLimitCount: v })}
                 />
               </div>
@@ -132,6 +134,7 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
                         value={options.interactionRestartWait}
                         min={0}
                         ariaLabel={t('aria_restart_wait')}
+                        name="interactionRestartWait"
                         onCommit={(v) => void patch({ interactionRestartWait: v })}
                       />
                       <span className="text-xs text-[var(--muted-foreground)]">{t('act_restart_wait_unit')}</span>
@@ -166,6 +169,7 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
             <Select<Redirection>
               value={options.redirection}
               ariaLabel={t('opt_redirection')}
+              name="redirection"
               onChange={(v) => void patch({ redirection: v })}
               options={[
                 { value: 'follow', label: t('redirect_follow') },
@@ -187,11 +191,13 @@ function IntField({
   value,
   min,
   ariaLabel,
+  name,
   onCommit,
 }: {
   value: number;
   min: number;
   ariaLabel: string;
+  name: string;
   onCommit: (v: number) => void;
 }) {
   const [draft, setDraft] = useState(String(value));
@@ -199,8 +205,8 @@ function IntField({
 
   const commit = () => {
     setFocused(false);
-    const parsed = Number.parseInt(draft, 10);
-    if (!Number.isInteger(parsed) || parsed < min) {
+    const parsed = parseStrictInt(draft);
+    if (parsed === null || parsed < min) {
       setDraft(String(value));
       return;
     }
@@ -211,6 +217,8 @@ function IntField({
   return (
     <input
       type="number"
+      name={name}
+      autoComplete="off"
       aria-label={ariaLabel}
       className="no-spinner tnum w-16 rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 text-right text-sm font-semibold text-[var(--foreground)] outline-none transition focus:border-[var(--primary)]"
       value={focused ? draft : String(value)}

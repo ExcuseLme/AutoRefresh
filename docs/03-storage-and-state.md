@@ -65,19 +65,22 @@ export const DEFAULT_OPTIONS: Options = {
 - **`fixedPreset` 存在理由**：自定义值恰好等于 3 的倍数（如自定义输入 5）时，UI 应显示哪个 chip？
   规则：**命中预设值 ⇒ 选中对应预设 chip；否则选中"自定义"chip 并显示自定义值**。
   `fixedPreset` 显式记录，避免"值相等但意图不同"的歧义（ARP 用 `customSeconds` 字段做同款消歧，见 `a5` 数组里的 `custom-60`）。
-- **所有时间单位统一为"秒"（`number`，允许小数）**：ARP 内部秒/毫秒混用（`custom_interval` 秒、
-  `nextRefresh` 毫秒、`randomMin/Max` 秒），本扩展在边界处一次性换算，内部只传毫秒。
+- **所有时间单位统一为"秒"，且一律为整数（OQ-5 结论）**：ARP 内部秒/毫秒混用
+  （`custom_interval` 秒、`nextRefresh` 毫秒、`randomMin/Max` 秒），本扩展在边界处一次性换算，
+  内部只传毫秒。用户明确要求"不要小数, 整数就够用了"，因此 `fixedSeconds` / `customSeconds` /
+  `randomMinSeconds` / `randomMaxSeconds` / `interactionRestartWait` 全部是整数，
+  且**拒绝小数输入**（不能用 `Number.parseInt`，它会把 `2.5` 悄悄截成 `2`）。
 
 ## 2. 不变式（写入时校验，写入失败不落库）
 
 | 字段 | 规则 | 违反时 |
 | --- | --- | --- |
-| `fixedSeconds` | `> 0`；`<= 86400`（1 天，防手滑） | 拒绝 + 内联错误 |
-| `customSeconds` | `> 0`；`<= 86400` | 同上 |
-| `randomMinSeconds` | 整数 `>= 1` | 同 上 |
-| `randomMaxSeconds` | 整数，`>= randomMinSeconds` | 同上 |
-| `refreshLimitCount` | 整数 `>= 1` | 同上 |
-| `interactionRestartWait` | `>= 0`，`<= 3600` | 同上 |
+| `fixedSeconds` | 整数 `>= 1`；`<= 86400`（1 天，防手滑） | 拒绝 + 内联错误（`err_not_integer` / `err_interval_positive` / `err_interval_max`） |
+| `customSeconds` | 整数 `>= 1`；`<= 86400` | 同上 |
+| `randomMinSeconds` | 整数 `>= 1`；`<= 86400` | 同上 |
+| `randomMaxSeconds` | 整数 `>= randomMinSeconds`；`<= 86400` | 同上（跨字段报 `err_random_range`） |
+| `refreshLimitCount` | 整数 `>= 1` | 同上（`err_limit_count`） |
+| `interactionRestartWait` | 整数 `>= 0`，`<= 3600` | 同上（`err_restart_wait`） |
 | `autoClickSelector` | 仅在 `refreshType==='xhr'` 时校验可用性（运行时无效则跳过点击，不清空值） | 运行时降级 |
 
 > 与 ARP 的差异：ARP 会把非法值静默回落到默认（`Kg`：非有限/≤0 ⇒ 12000ms）。

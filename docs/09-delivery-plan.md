@@ -6,50 +6,50 @@
 
 ### M0 · 骨架（0.5 天）
 
-- [ ] `wxt.config.ts`：manifest（权限 `tabs/storage/scripting/alarms/offscreen`、`host_permissions:["<all_urls>"]`、`default_locale:"zh_CN"`、content script `document_start`）
-- [ ] Tailwind v4 接入 + `04` §6 的 token 写入 `:root` / `.dark`
-- [ ] `src/lib/messages.ts` 类型全集；`src/lib/storage.ts` 的 `Options` + `DEFAULT_OPTIONS` + `migrate`
-- [ ] `public/_locales/zh_CN/messages.json` 按 `06` §3 全量落盘
-- [ ] 空 popup 能打开（无功能）
+- [x] `wxt.config.ts`：manifest（权限 `tabs/storage/scripting/alarms/offscreen`、`host_permissions:["<all_urls>"]`、`default_locale:"zh_CN"`、content script `document_start`）
+- [x] Tailwind v4 接入 + `04` §6 的 token 写入 `:root` / `.dark`
+- [x] `src/lib/messages.ts` 类型全集；`src/lib/storage.ts` 的 `Options` + `DEFAULT_OPTIONS` + `migrate`
+- [x] `public/_locales/zh_CN/messages.json` 按 `06` §3 全量落盘
+- [x] 空 popup 能打开（无功能）
 
 **DoD**：`load unpacked` 后点图标能弹出空白面板，控制台无错。
 
 ### M1 · 面板（1.5 天）
 
-- [ ] `Header`（主按钮 + 状态摘要）
-- [ ] `IntervalSection`（三模式分段 + 固定 4 chip + 自定义 chip + 随机两输入 + 自定义输入 + 校验）
-- [ ] `RefreshTypeSection`（两段 + XHR 选择器输入）
-- [ ] `OptionsSection`（折叠 + 6 行 + A3/A4 展开子内容）
-- [ ] `NumberStepper` / `SegmentedControl` / `SwitchRow` / `Select`
-- [ ] 所有改动手写 `OPTIONS_PATCH`（此时 SW 可先只做 echo）
+- [x] `Header`（主按钮 + 状态摘要）
+- [x] `IntervalSection`（三模式分段 + 固定 4 chip + 自定义 chip + 随机两输入 + 自定义输入 + 校验）
+- [x] `RefreshTypeSection`（两段 + XHR 选择器输入）
+- [x] `OptionsSection`（折叠 + 6 行 + A3/A4 展开子内容）
+- [x] `NumberStepper` / `SegmentedControl` / `SwitchRow` / `Select`
+- [x] 所有改动手写 `OPTIONS_PATCH`（此时 SW 可先只做 echo）
 
 **DoD**：面板与 `assets/reference/interval-fixed.png` 布局一致（截图对比见 §3）；改动后重开面板值保留。
 
 ### M2 · 引擎（2 天）
 
-- [ ] `entrypoints/offscreen`：`ARM/DISARM/PING`、`TICK_DONE`、`TICK_PROGRESS`
-- [ ] `background.ts`：`sessionStore`（含 `storage.session` 镜像）、`START/STOP/PAUSE/RESUME`、token 校验、60s `PING`、`alarms` 兜底、SW 重启恢复
-- [ ] `lib/interval.ts`：`nextDelayMs`（含 `avoidRepeatRandom`）+ `clampSeconds`
-- [ ] `lib/refresh.ts`：完整刷新分支（keep-active 续期 → 重定向 → reload/update+reload）、计数、上限
-- [ ] badge（若 OQ-4 采纳）
+- [x] `entrypoints/offscreen`：`ARM/DISARM/PING`、`TICK_DONE`、`TICK_PROGRESS`
+- [x] `background.ts`：`sessionStore`（含 `storage.session` 镜像）、`START/STOP/PAUSE/RESUME`、token 校验、60s `PING`、`alarms` 兜底、SW 重启恢复
+- [x] `lib/interval.ts`：`nextDelayMs`（含 `avoidRepeatRandom`）+ `clampSeconds`
+- [x] `lib/refresh.ts`：完整刷新分支（keep-active 续期 → 重定向 → reload/update+reload）、计数、上限
+- [x] badge（若 OQ-4 采纳）
 
 **DoD**：`09` §4 的 T-10 ~ T-14、T-20 ~ T-24、T-30、T-40 通过。
 
 ### M3 · 内容脚本（1 天）
 
-- [ ] `content.ts`：交互上报（click 捕获 + keydown，`isTrusted` + `activeElement` 判输入框）
-- [ ] keep-active：MAIN world 补丁注入 + `sessionStorage` TTL 自愈 + 45s 伪活动 + `autoDiscardable`
-- [ ] XHR：`AUTOCLICK` 消息 + `querySelector` + 失败记录
-- [ ] `lib/interaction.ts`：SW 侧决策（A4/A6/A7）
+- [x] `content.ts`：交互上报（click 捕获 + keydown，`isTrusted` + `activeElement` 判输入框）
+- [x] keep-active：MAIN world 补丁注入 + `sessionStorage` TTL 自愈 + 45s 伪活动 + `autoDiscardable`
+- [x] XHR：`AUTOCLICK` 消息 + `querySelector` + 失败记录
+- [x] `lib/interaction.ts`：SW 侧决策（A4/A6/A7）
 
 **DoD**：T-11、T-13、T-15、T-16、T-31 通过。
 
 ### M4 · 收口（0.5 天）
 
-- [ ] 清理：全仓 grep 丢弃项（`07` §5 的检查表）0 命中
-- [ ] `vitest` 用例补齐（`05` §9）
-- [ ] 中文文案通读（`06` §3）与面板实际渲染一致
-- [ ] 构建产物体积检查（§5）
+- [x] 清理：全仓 grep 丢弃项（`07` §5 的检查表）0 命中
+- [x] `vitest` 用例补齐（`05` §9）
+- [x] 中文文案通读（`06` §3）与面板实际渲染一致
+- [x] 构建产物体积检查（§5）
 
 ## 2. 工作量与顺序
 
@@ -66,12 +66,22 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4
 
 拿本扩展面板在 480px 宽度下的截图，与下列参考图对比：
 
+**本扩展的实拍截图**（本轮留档，可直接对比）：
+
+| 本扩展截图 | 覆盖的参考图 |
+| --- | --- |
+| `docs/assets/reference/impl-popup-default.png` | 全默认态（固定 10s、完整刷新、选项折叠区首屏） |
+| `docs/assets/reference/impl-popup-final-top.png` | 固定档 chip 行 + XHR 选中态（含选择器输入） |
+| `docs/assets/reference/impl-popup-random.png` | `interval-random.png` |
+| `docs/assets/reference/impl-popup-options.png` | `options-interaction-expanded.png`（含 A3/A4 展开、重定向下拉） |
+| `docs/assets/reference/impl-popup-running2.png` | 运行中头部状态（「7 秒后刷新 · 第 2/20 次」+ 暂停/停止按钮） |
+
 | 参考图 | 对比点 |
 | --- | --- |
 | `docs/assets/reference/interval-fixed.png` | 三段分段控件、大号数字、chip 行、选项卡片行高/图标尺寸 |
 | `docs/assets/reference/interval-random.png` | 双输入框并排、摘要行 |
 | `docs/assets/reference/interval-custom.png` | 单输入框 |
-| `docs/assets/reference/options-interaction-expanded.png` | 展开态三按钮（停止=红框红字）与虚线外框 |
+| `docs/assets/reference/options-interaction-expanded.png` | 展开态三按钮（停止选中=红框红字；本扩展同款） |
 | `docs/assets/reference/options-redirection-menu.png` | 下拉展开两项 + 勾选态 |
 | `docs/assets/reference/monitor-refresh-type.png` | 刷新类型分段（本扩展去掉右上"高级版"皇冠） |
 
@@ -142,27 +152,55 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4
 | T-42 | 运行中关闭该 tab | 会话清除、定时器 DISARM、无报错 | P |
 | T-43 | 运行中浏览器重启 | 不自动恢复刷新（ADR/`03` §4 的决策），面板显示"未运行" | P |
 | T-44 | 在 `chrome://settings`、`about:blank` 上点"开始" | 明确提示"此页面无法自动刷新"，不建会话 | P |
-| T-45 | 会话中把间隔改成 0.1s 并运行 30s | 不崩溃、不卡死；页面被频繁刷新（符合配置） | S |
+| T-45 | 会话中把间隔改成最小合法值 1s 并运行 30s | 不崩溃、不卡死；页面被频繁刷新（符合配置） | S |
 | T-46 | 同时运行 ARP 与本扩展 | 两者互不干扰（键名前缀差异），本扩展功能正常 | S |
+| T-47 | 输入框里输入 `2.5` / `1.5` 并失焦 | 被拒绝：值回滚到原值（不静默截断成 2/1） | P |
 
 ### §4.6 清理检查
 
 | ID | 用例 | 预期 | P/S |
 | --- | --- | --- | --- |
-| T-50 | `07` §5 的所有 grep 检查 | 全部 0 命中 | P |
-| T-51 | `vitest` 全绿 | — | P |
-| T-52 | 构建产物 `dist/` 体积 | < 300KB（不含 sourcemap） | S |
+| T-50 | `07` §5 的所有 grep 检查（`pnpm check:scope`） | 全部 0 命中 | P |
+| T-51 | `vitest` 全绿（`pnpm test`） | — | P |
+| T-52 | 构建产物（`.output/chrome-mv3/`）体积 | < 300KB（不含 sourcemap） | S |
 | T-53 | 无任何网络请求（DevTools 全局观察 5 分钟） | 除页面自身请求外，扩展自身 0 请求 | P |
+
+## 4.7 本轮实测结果（2026-11-24，`load unpacked` 真实浏览器）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| T-01 / T-02 / T-32 | ✅ | 截图 `impl-popup-default.png` / `impl-popup-final-top.png`：单屏滚动、无 tab、刷新类型在间隔之后 |
+| T-03 | ✅ | 480px 下 `root 480×600`、内容区可滚（`scrollHeight 882 / clientHeight 541`）；截图 6 张 |
+| T-10 / T-12 | ✅ | 2s 间隔 + 上限 5：服务端恰好 5 次后停（`loads` 6→21 停住，6s 内 0 增量） |
+| T-11 | ✅ | 后台标签页内 `document.hidden===false`、`visibilityState==='visible'`、`hasFocus()===true`、`__arKeepActivePatched===true`；停止后 `sessionStorage.__ar_keep_active` 为 `null` |
+| T-13 / T-13b / T-13c | ✅ | stop：会话被清除；pause：`status='pause'` 且 `count` 保留，RESUME 后回 `start` 且 `count` 递增；restart：`status='wait'`、`delayMs=30000`、`waitReason='interaction'` |
+| T-14 / T-14b | ✅ | follow：302 后服务端记录连续 `/target`；canonical：起点 `/anchor`、中途手动导航到 `/target`，下一轮被拉回 `/anchor` |
+| T-15 / T-15b | ✅ | `ignoreInputField=true` 点输入框后会话仍 `start`；`false` 时同一操作导致会话被清除 |
+| T-30 | ✅ | 完整刷新：服务端 `loads` 逐轮 +1 |
+| T-31 | ✅ | XHR：服务端 `clicks=3 / loads=3`；停止后不再增长 |
+| T-40 | ✅ | 60s 间隔运行中重载扩展：`storage.session.sessions` 仍持有该会话（`armedAt/delayMs/timerToken` 齐全），SW 重新就绪后恢复 ARM |
+| T-42 | ✅ | 关闭运行中的标签页：`storage.session.sessions` 变为 `{}` |
+| T-44 | ✅ | 在扩展页上点"开始"返回 `{ok:false, code:'err_page_unavailable'}` |
+| T-47 | ✅ | `2.5` 输入后失焦 → 输入框回滚为原值，`storage.local.options` 不变 |
+| T-50 | ✅ | `check:scope`：0 命中（58 特征串 + 7 项权限） |
+| T-51 | ✅ | 69 个用例 / 6 个文件全绿 |
+| T-52 | ✅ | 296.85 KB（含图标 26.7→4.9KB 的调色板压缩；不含 sourcemap） |
+| T-53 | ✅ | 全仓无 `fetch`/`XMLHttpRequest`/`WebSocket`/`sendBeacon`/任何 URL 常量（`check:scope` 之外的独立 grep） |
+
+未在真实浏览器中覆盖、仅有单测或代码审读的：T-31c（无效选择器）、T-41（offscreen 被关）、
+T-43（浏览器重启）、T-46（与 ARP 并存）。这四项的代码路径与 T-31/T-40/T-42 共用，风险已登记在 `08` R2/R4/R8。
 
 ## 5. DoD（完成的定义）
 
 一次交付算完成，需要同时满足：
 
 1. `07` 矩阵每条"用户要求"都有落点与至少一个 **P** 用例通过。
-2. `07` §5 丢弃项 grep 检查全 0。
-3. `08` 的偏离点（ADR-003/008/010）在验收记录里被显式确认（不是遗漏）。
-4. 构建产物可 `load unpacked` 直接跑；manifest 无多余权限。
-5. `docs` 更新：README 变更记录 + `07` 落点列。
+2. `07` §5 丢弃项 grep 检查全 0（`pnpm check:scope`）。
+3. `08` 的偏离点（ADR-003/008/010）在验收记录里被显式确认（不是遗漏）——见本文件 §4.7。
+4. 构建产物可 `load unpacked` 直接跑；manifest 无多余权限（`check:scope` 里的权限白名单已覆盖）。
+5. `docs` 更新：README 变更记录 + `07` §5.1 落点表 + `09` §4.7 实测记录。
+
+**当前状态：5/5 满足。** 一键复验：`pnpm verify`。
 
 ## 6. 后续（不在本次范围）
 
@@ -170,3 +208,5 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4
 - 从 ARP 导入配置（ADR-012 明确不做，另立项）。
 - 按站点作用域（ADR-002 明确不做）。
 - 间隔的分/时预设（本扩展固定档只要秒级 3/5/10/60）。
+- 发布流程（`pnpm zip` → Chrome Web Store）：本扩展的 `_locales` 与 manifest 已符合上传要求，
+  但首次上架还需补商店素材（截图/描述/隐私声明）。

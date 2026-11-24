@@ -50,7 +50,16 @@ export function installKeepActive(): void {
   );
 
   // 每 45s 造一次伪活动，避免长时间无输入被判空闲
+  const renew = () => {
+    try {
+      sessionStorage.setItem('__ar_keep_active', String(Date.now() + 5 * 60 * 1000));
+    } catch {
+      /* 隐私模式 / 存储被禁时忽略 */
+    }
+  };
+
   window.setInterval(() => {
+    renew();
     const root = document.documentElement;
     if (!root) return;
     if (originalHasFocus.call(document)) return;
@@ -59,17 +68,5 @@ export function installKeepActive(): void {
     if (typeof PointerEvent === 'function') root.dispatchEvent(new PointerEvent('pointermove', init));
   }, 45_000);
 
-  // 拦截失败时续期 TTL（路由变更/页面重载后由 keep-active 自愈脚本重新打补丁）
-  const renew = () => {
-    try {
-      sessionStorage.setItem('__ar_keep_active', String(Date.now() + 5 * 60 * 1000));
-    } catch {
-      /* 忽略 */
-    }
-  };
   renew();
-  for (const type of ['visibilitychange', 'webkitvisibilitychange'] as const) {
-    // 用 capture + 冒泡两个阶段都挂，确保即便被页面 stopImmediatePropagation 也续期一次
-    window.addEventListener(type, renew, { capture: true });
-  }
 }

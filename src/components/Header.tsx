@@ -14,10 +14,15 @@ type Control = {
 function statusLine(session: Session | null, options: Options): string {
   const s = summarize(session, options.refreshLimitEnabled ? options.refreshLimitCount : null);
   switch (s.kind) {
-    case 'running':
-      return s.limit === null
-        ? `${t('status_running')} · ${t('status_count', [s.count])}`
-        : `${t('status_running')} · ${t('status_count_limited', [s.count, s.limit])}`;
+    case 'running': {
+      // OQ-2：头部显示"N 秒后刷新"，配合 count 显示进度
+      const remain = session ? Math.max(0, Math.ceil((session.armedAt + session.delayMs - Date.now()) / 1000)) : 0;
+      const count =
+        s.limit === null
+          ? t('status_count', [s.count])
+          : t('status_count_limited', [s.count, s.limit]);
+      return `${t('status_next_in', [remain])} · ${count}`;
+    }
     case 'paused':
       return `${t('status_paused')} · ${t('status_count', [s.count])}`;
     case 'waiting':

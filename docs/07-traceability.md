@@ -46,6 +46,10 @@
 
 ## 5. 丢弃项（逐项对应证据，防止"复活"）
 
+> **执行方式**：`pnpm check:scope`（脚本 `scripts/check-scope.mjs`，T-50 的自动化版本）。
+> 它在下表中每个"grep X"上真的跑一遍，外加构建产物 manifest 的权限白名单校验；
+> 注释行豁免（设计文档里写"我们没有 X"是必要的）。当前结果：**0 命中**。
+
 | 丢弃项 | ARP 证据（存在性证明） | 检查方式 |
 | --- | --- | --- |
 | 独立配置页 | `manifest.json` `options_ui`/`external.html`/`externally_connectable`；`content-scripts/script.js` 为 `*.autorefresh.io` 上的注入 UI | 全仓 grep `autorefresh.io`、`options_ui`、`externally_connectable` 必须 0 命中 |
@@ -62,6 +66,24 @@
 | 页面内计时浮层 | `_l.visualtimer/visualPosition/timer_style`；`TS()` / `O('showVisualTimer')` | grep `visualtimer`、`showVisualTimer` 0 命中 |
 | 验证码/错误页检测 | popup 选项区末尾两项（快照 `uid=1_51..1_54`）；`background.js` `Bb()/Vb()/Rb()/zb()` | grep `captchaDetection`、`errorDetection` 0 命中 |
 | 阻止系统睡眠 | `_l.power_save`；`$h()` 中 `m.power.requestKeepAwake('system')`；manifest `power` | grep `power_save`、`requestKeepAwake` 0 命中 |
+
+## 5.1 需求 → 实现落点（实现完成后的对照）
+
+| 需求 | 实现文件 | 单测 / 手工验证 |
+| --- | --- | --- |
+| 丢弃独立配置页 · 只有 popup | `wxt.config.ts`（无 `options_ui`）、`src/entrypoints/popup/*` | `check:scope` 0 命中；manifest 无 `options_ui` |
+| A1 强制刷新 | `src/lib/refresh.ts`（`reload({bypassCache})`）、`src/lib/options.ts` | 面板开关 + `refreshLimitEnabled` 手工验证 |
+| A2 后台保持活动 | `src/lib/keep-active.ts`（MAIN 补丁）、`src/lib/keep-active-runtime.ts`（注入/TTL/清场） | 手工：后台标签 `document.hidden===false`、`__arKeepActivePatched===true`、stop 后 `sessionStorage` 键消失 |
+| A3 刷新次数上限 | `src/lib/url.ts` `reachedLimit`（`>=`）、`src/entrypoints/background.ts` `executeRound` | `tests/url-and-limits.test.ts`；手工：2s×上限5 → 服务端恰好 5 次后停 |
+| A4/A7 交互行为 | `src/lib/interaction.ts`、`background.ts` `onInteraction` | `tests/session-and-interaction.test.ts`；手工：stop/pause/restart 三态 + wait 恢复 |
+| A5 重定向行为 | `src/lib/url.ts` `pickTargetUrl`、`refresh.ts` | `tests/url-and-limits.test.ts`；手工：302 场景下 follow 继续 `/target`、canonical 拉回 `/anchor` |
+| A6 忽略输入框 | `src/lib/interaction.ts` | `tests/session-and-interaction.test.ts`；手工：`ignoreInputField` true/false 各点一次输入框 |
+| B1 固定档 3/5/10/60 | `src/lib/options.ts` `FIXED_PRESETS` | `tests/url-and-limits.test.ts`（默认值断言） |
+| B2 自定义整数秒 | `src/lib/number-input.ts`、`options.ts` `clampSeconds` | `tests/number-input.test.ts`、`tests/interval.test.ts` |
+| B3 自定义全局同步 | `src/lib/storage.ts`（单 key `options`） | 手工：改自定义值后换标签页仍一致 |
+| B4/B5 随机闭区间 | `src/lib/interval.ts` `nextDelayMs` | `tests/interval.test.ts`（13 例，含边界与去重） |
+| C1/C2/C2a 刷新类型 | `src/components/RefreshTypeSection.tsx`、`refresh.ts`、`content.ts` | `check:scope` 无 premium；手工：XHR 模式服务端只记 clicks 不记 loads |
+| 会话恢复（SW 被回收） | `src/lib/session-store.ts`、`background.ts` `ensureReady` | 手工：60s 间隔启动 → 重载扩展 → 会话仍在 `storage.session` |
 
 ## 6. 非功能要求
 

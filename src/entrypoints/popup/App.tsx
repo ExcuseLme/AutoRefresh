@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { t } from '@/lib/i18n';
 import type { PopupCommand, StateSnapshot } from '@/lib/messages';
 import { DEFAULT_OPTIONS, type Options } from '@/lib/options';
 import type { Session } from '@/lib/session';
@@ -106,10 +107,15 @@ export default function App() {
     <div className="flex max-h-[600px] flex-col bg-[var(--background)]">
       <Header session={session} options={options} control={control} />
       <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4 pt-3">
-        <IntervalSection options={options} patch={patch} />
-        <RefreshTypeSection options={options} patch={patch} />
-        <OptionsSection options={options} patch={patch} />
-        {ready && tabId === null ? null : null}
+        {!ready ? (
+          <p className="px-1 py-6 text-center text-xs text-[var(--muted-foreground)]">{t('status_loading')}</p>
+        ) : (
+          <>
+            <IntervalSection options={options} patch={patch} />
+            <RefreshTypeSection options={options} patch={patch} />
+            <OptionsSection options={options} patch={patch} />
+          </>
+        )}
       </div>
     </div>
   );

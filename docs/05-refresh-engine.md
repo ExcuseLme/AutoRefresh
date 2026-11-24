@@ -345,10 +345,17 @@ popup        SW                 offscreen        tabs          content
 
 ## 9. 引擎可测点（`vitest`）
 
-| 单元 | 用例 |
-| --- | --- |
-| `nextDelayMs` | fixed/random/custom 三模式；`min===max` 退化；闭区间能取到 max；`avoidRepeat` 不返回上一轮值；非法输入被 clamp |
-| `pickTargetUrl` | follow/canonical × URL 相同/不同 |
-| 上限判定 | `count=limit-1` 继续；`count=limit` 停；开关关闭时永不停 |
-| 状态机 | START→PAUSE→RESUME 保留 count；交互 restart 进 `wait` 后回 `start` 并刷新；token 变更丢弃旧 tick |
-| keep-active 补丁 | 对一个假 `document` 断言 `hidden===false`、事件被吞、45s 派发被触发（用假 timer） |
+| 单元 | 用例 | 落在 |
+| --- | --- | --- |
+| `nextDelayMs` | fixed/random/custom 三模式；`min===max` 退化；闭区间能取到 max；`avoidRepeat` 不返回上一轮值；非法输入被 clamp | `tests/interval.test.ts` |
+| `pickTargetUrl` | follow/canonical × URL 相同/不同 | `tests/url-and-limits.test.ts` |
+| 上限判定 | `count=limit-1` 继续；`count=limit` 停；开关关闭时永不停 | `tests/url-and-limits.test.ts` |
+| 状态机 | START→PAUSE→RESUME 保留 count；交互 restart 进 `wait` 后回 `start` 并刷新；token 变更丢弃旧 tick | `tests/session-and-interaction.test.ts`（状态机、交互决策）；token 守卫在 `background.ts` `onTick`，靠 §4.7 的 T-40 手工验证 |
+| 校验 / 迁移 | 整数强制、上限、跨字段随机范围、脏枚举回落、未知键丢弃 | `tests/validate.test.ts` |
+| 整数输入 | `2.5`/`12abc`/`1e3` 一律拒绝，不下溢不截断 | `tests/number-input.test.ts` |
+| i18n | key 全集、占位符必须是 `$N`、没有 `%N` | `tests/i18n.test.ts` |
+
+**keep-active 补丁的注**：它的自测需要伪造 `document`/`window` 原型与假 timer，
+在 jsdom/happy-dom 下成本高于收益，且真实行为只能用真实页面验证 ——
+改为 §4.7 的 T-11 手工验收（已在真实后台标签页验证 `hidden/visibilityState/hasFocus` 全被改写）。
+这条偏离在 `08` R3 有登记。
