@@ -35,7 +35,7 @@ docs/
 | M1 面板 UI（单屏滚动、间隔/刷新类型/选项三段、视觉 token） | ✅ `34427b5` |
 | M2 引擎（offscreen 计时、token 守卫、alarms 兜底、SW 重启恢复） | ✅ `34427b5` |
 | M3 内容脚本（交互上报、XHR 自动点击、keep-active 注入与自愈） | ✅ `34427b5` |
-| M4 清理与验收（丢弃项检查脚本、vitest、体积 < 300KB） | ✅ 本轮 |
+| M4 清理与验收（丢弃项检查脚本、vitest、体积 296.85KB） | ✅ `f654b7b` |
 
 已确认的五项决策（不再作为开放问题）：
 
@@ -78,6 +78,8 @@ tests/                     vitest 单测（间隔算法、校验、URL/上限、
 ```
 
 验证入口：`pnpm verify`（= `compile` + `test` + `build` + `check:scope`）。
+
+本地试用：`pnpm build` 后把 `.output/chrome-mv3/` 目录作为 `load unpacked` 加载。
 
 
 ## 阅读顺序（给实现者）
