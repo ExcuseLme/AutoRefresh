@@ -93,4 +93,4 @@
 | --- | --- | --- |
 | 离线可用、零遥测 | ARP 有 `analytics-enabled`、`clientId`、GA/`/mp/collect`、`/v1/extension/status` 轮询 | `02` §3 权限表；`07` §5 AI/付费行 |
 | MV3 SW 可被回收而不丢刷新任务 | ARP 靠 CS 每秒心跳保活（脆弱） | `05` §1（offscreen 托管 + 三重兜底） |
-| 包体远小于 ARP | ARP 解包共 7.47MB / 100 个文件（`chunks/popup-BcW0V7JR.js` 1267KB、`content-scripts/script.css` 1062KB、`content-scripts/script.js` 676KB、`background.js` 367KB、`I18nProvider` 242KB、`popup-DcUX7WOF.css` 228KB、另有 `external-`/`permissions-` 两份 ~220KB CSS） | `09` §5 目标：< 300KB（不含 sourcemap） |
+| 包体远小于 ARP | ARP 解包共 7.47MB / 100 个文件（`chunks/popup-BcW0V7JR.js` 1267KB、`content-scripts/script.css` 1062KB、`content-scripts/script.js` 676KB、`background.js` 367KB、`I18nProvider` 242KB、`popup-DcUX7WOF.css` 228KB、另有 `external-`/`permissions-` 两份 ~220KB CSS） | 体积**不设限**（用户明确：自用扩展，不管体积） |
