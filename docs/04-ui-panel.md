@@ -1,0 +1,188 @@
+# 04 · 扩展面板（popup）设计
+
+> 形态已确认：**单屏滚动面板**（Q3）。没有 tab 切换，从顶到底一条流。
+> 证据：`assets/reference/popup-wide-idle.png`（ARP 原生 480px 面板全貌）、
+> `interval-fixed.png` / `interval-random.png` / `interval-custom.png`（三档间隔）、
+> `options-interaction-expanded.png`（交互展开态）、`options-redirection-menu.png`（下拉）、
+> `monitor-refresh-type.png`（刷新类型分段控件）。
+
+## 1. 尺寸与骨架
+
+- `min-width: 480px`（继承 ARP 的 `body,#root{min-width:480px}`），高度跟随内容，最大 600px 后内部滚动。
+- 布局：`flex flex-col`，仅中间内容区 `overflow-y:auto`，头部与底部操作区固定。
+
+```
+┌──────────────────────────────────────────────┐
+│ [icon] AutoRefresh            [▶ 开始 / ■ 停止] │  头部：品牌 + 主操作
+│        状态：运行中 · 第 3/10 次 · 下次 8s       │        + 状态摘要（一行）
+├──────────────────────────────────────────────┤
+│  ⟳ 间隔                                        │  段落 1：间隔
+│  ┌──────────┬──────────┬──────────┐           │
+│  │ 固定 (on) │  随机     │  自定义   │           │  分段控件（3 段）
+│  └──────────┴──────────┴──────────┘           │
+│  [ 3s ][ 5s ][ 10s ][ 60s ][ ✎ 自定义 ]        │  固定档：4 预设 + 自定义 chip
+│  ── 或 ──                                      │
+│  最小 [ 5 ]  最大 [ 30 ]  秒                    │  随机档：两个数字输入 + 摘要
+│  ── 或 ──                                      │
+│  自定义 [ 12.5 ] 秒                             │  自定义档：单个秒输入
+├──────────────────────────────────────────────┤
+│  ⚡ 刷新类型                                     │  段落 2：刷新类型（从「监控」搬来）
+│  ┌────────────┬────────────┐                  │
+│  │ 完整页面刷新 │  XHR 刷新   │                  │  分段控件（2 段）
+│  └────────────┴────────────┘                  │
+│  [ 自动点击元素选择器 ................ ]         │  仅 XHR 时展开
+├──────────────────────────────────────────────┤
+│  ⚙ 选项                                    ⌃  │  段落 3：可折叠
+│  ⚡ 强制刷新                         [switch]   │
+│  🗔 让页面在后台保持活动              [switch]   │
+│  # 设置刷新次数                    [switch]     │
+│    └ 次数 [ 10 ]                               │  开启后展开
+│  👆 用户交互时的刷新行为            [switch]    │
+│    └ [停止][暂停][重新开始]                     │  开启后展开（分段按钮）
+│      重新开始前等待 [ 5 ] 秒                     │  仅 restart 展开
+│  ⌨ 忽略输入框交互                    [switch]   │  （仅交互开启时展示，见 §4.3）
+│  ➤ 重定向行为              [跟随所有重定向 ▾]   │
+└──────────────────────────────────────────────┘
+```
+
+## 2. 头部（Header）
+
+| 元素 | 内容 | 行为 |
+| --- | --- | --- |
+| 图标 + 名称 | `AutoRefresh` | 纯展示（**不显示版本号**：ARP 的 `v9.3.0 / Updated` 属于发布信息，本扩展不需要） |
+| 主按钮 | `▶ 开始` / `■ 停止`（进行中）/ `❚❚ 暂停`（可加次级按钮） | 见 §3 |
+| 状态摘要 | `未运行` / `运行中 · 第 3/10 次` / `已暂停` / `每 8s 后刷新`（OQ-2 待定：是否显示倒计时数字） | 只读 |
+
+- 图标与按钮沿用 ARP 的绿色主色（`--primary: oklch(62% .17 155)`，见 §6）。
+- 按钮状态映射：
+  - `stop` → 主按钮「开始」（绿色）
+  - `start` → 主按钮「停止」（红色 destructive）+ 一个「暂停」次级按钮
+  - `pause` → 主按钮「继续」（绿色）+ 「停止」次级
+  - `wait`（交互 restart 中）→ 主按钮「停止」+ 摘要「等待 5s 后重启」
+
+## 3. 主操作语义（对齐 ARP 的 Rx / mS / gS / $b）
+
+| 动作 | 前置 | 效果 |
+| --- | --- | --- |
+| `START` | 当前 tab 是 http/https（`chrome://`、`about:blank`、`file://` 拒绝，ARP `ax` 同款判断） | 清旧会话 → 建新会话（count=0）→ 若 `refreshLimitEnabled` 用 `refreshLimitCount` → **首轮是否立即刷新**：本扩展采用"立即刷一轮，再进入等待"（因为已无监控，"先扫后等"没有意义）→ 见 ADR-008 |
+| `STOP` | 任意 | 清会话、`DISARM`、关掉 keep-active 注入、恢复 UI |
+| `PAUSE` | `start`/`wait` | 暂停且保留 count；offscreen `DISARM` |
+| `RESUME` | `pause` | 恢复并重新 `ARM`（delay 从头算，与 ARP `gS` 一致） |
+
+## 4. 各段落细节
+
+### 4.1 间隔段落
+
+- **分段控件**（`IntervalMode`）：固定 / 随机 / 自定义。三段等宽，
+  选中态为白底 + 绿色圆点图标（照 ARP：`interval-fixed.png`）。
+  切换模式**立即落库**（`intervalMode`），不影响正在运行的会话是否重启 ——
+  运行中改间隔：只影响**下一轮**的等待时间（ARP 的 `Hx` 在 `optionsChange` 时会重算，见 `05` §4.4）。
+- **固定档**：`[3秒][5秒][10秒][60秒][✎ 自定义]`。
+  - 4 个预设 chip 命中 `fixedPreset` 时高亮（浅绿底 + 绿边）。
+  - `✎ 自定义` chip：点击后行内展开数字输入（不是弹窗），输入即落库。
+  - 数字输入：`input[type=number]` + `step` 步进按钮（−/+），居中大号数字（照 ARP 的 `interval-fixed.png`）。
+    去掉 spinner（`appearance:none`），保留自绘 −/+ 按钮（ARP 用 `no-spinner` 类）。
+- **随机档**：两个数字输入「最小(秒)」「最大(秒)」，下方一行摘要
+  `每 5–30 秒刷新`；非法（max<min）时把摘要替换成红色提示。
+  ARP 的警告文案键 `warning_random_interval` 在本扩展用自写文案（见 `06`）。
+- **自定义档**：一个「秒」输入，下方摘要 `每 12.5 秒刷新`。
+  和固定档里的 `✎ 自定义` chip 共用**同一个字段** `customSeconds`（避免两处不一致）。
+
+### 4.2 刷新类型段落（原「监控」tab 的刷新类型）
+
+- 两段分段控件：`完整页面刷新` / `XHR 刷新`，下方一行说明随选中项变化：
+  - `完整页面刷新`：`重新加载整个页面`
+  - `XHR 刷新`：`不重新加载页面，点击指定元素以触发页面自身的 AJAX`
+- XHR 选中时展开「自动点击元素选择器」输入（`placeholder="例如 #refresh-btn 或 .load-more"`）。
+  - 运行时用 `document.querySelector` 校验；无效时该轮跳过点击，并在状态摘要里显示弱提示（不弹窗）。
+  - **去掉 ARP 的 premium 皇冠**（原控件右上角有 `高级版` 标签，见 `monitor-refresh-type.png`）。
+
+### 4.3 选项段落（可折叠，默认展开；记住折叠状态）
+
+| 行 | 标题 | 副标题 | 控件 | 展开内容 |
+| --- | --- | --- | --- | --- |
+| A1 | 强制刷新 | 每次重新加载时绕过缓存 | switch | — |
+| A2 | 让页面在后台保持活动 | 适用于标签页在后台时会退出登录的网站 | switch | — |
+| A3 | 设置刷新次数 | 达到指定次数后停止 | switch | 次数数字输入（≥1，整数） |
+| A4/A7 | 用户交互时的刷新行为 | 使用页面时的行为 | switch | 三选一按钮组：停止 / 暂停 / 重新开始（照 `options-interaction-expanded.png` 的红色「停止」+「暂停」+「重新开始」）；`restart` 时再展开「重新开始前等待 [N] 秒」 |
+| A6 | 忽略输入框交互 | 在输入框内点击或打字也继续刷新 | switch | — |
+| A5 | 重定向行为 | 刷新期间处理重定向 | 下拉（`跟随所有重定向` / `跟随规范 URL`） | 下拉说明文案随选项变化 |
+
+- **A6 与 A4 的耦合**：`interactions=false` 时 A6 无意义 ⇒ 置灰但保留值（ARP 也是保留值、只是不生效）。
+- 折叠头：`⚙ 选项` + 右侧 chevron，折叠状态存 `localStorage`（**不进 `options`**，
+  因为这是纯 UI 偏好，不该触发 `storage.onChanged` 的配置广播）。
+- 与 ARP 视觉对齐：每行是 "图标 + 标题/副标题 + 右侧控件" 的卡片，图标为浅灰圆角方块（见 `interval-fixed.png`）。
+
+### 4.4 不做（但 ARP 有）的行
+
+- 防止重新提交表单（premium，`options-interaction-*` 截图中间那行）—— OQ-3
+- 显示可视计时器 —— 丢弃（与"不要倒计时"一致）
+- 验证码检测 / 错误页检测 —— 丢弃
+- 侧边栏开关、通知铃铛、账户菜单、AI 浮球、升级入口 —— 丢弃
+
+## 5. 交互与无障碍
+
+- 所有 switch 用 `role="switch"` + `aria-checked` + `aria-label`（ARP 已如此，`take_snapshot` 可见）。
+- 分段控件用 `role="tablist"` / `role="tab"` + `aria-selected`。
+- 所有输入有 `aria-label`（如「以秒为单位的间隔」「最小秒数」「最大秒数」）。
+- 数字输入的 −/+ 按钮 `aria-label`：`减少 1` / `增加 1`。
+- 键盘：面板内 `Tab` 顺序 = 视觉顺序；`Enter` 在输入框内提交并失焦。
+- 文案随 `i18n`（仅中文，见 `06`）。
+
+## 6. 视觉 token（从 ARP 的 `assets/popup-DcUX7WOF.css` 提取，可直接用）
+
+亮色（`:root`）：
+
+```
+--radius: .625rem;
+--background: oklch(97% 0 0);
+--foreground: oklch(15% 0 0);
+--card: oklch(100% 0 0);
+--primary: oklch(62% .17 155);
+--primary-foreground: oklch(100% 0 0);
+--secondary: oklch(94% 0 0);
+--muted-foreground: oklch(50% 0 0);
+--destructive: oklch(55% .22 27);
+--border: oklch(88% 0 0);
+--ring: oklch(62% .17 155);
+```
+
+暗色（`.dark`）：
+
+```
+--background: oklch(15.5% .004 240);
+--card: oklch(19.5% .004 240);
+--primary: oklch(64% .16 155);
+--border: oklch(30% .004 240);
+--muted-foreground: oklch(62% .004 240);
+```
+
+字体：`Inter, sans-serif`（`--default-font-family`），等宽 `--default-mono-font-family`；
+数字一律 `font-variant-numeric: tabular-nums`（避免倒计时/间隔数字抖动）。
+
+其他细节：
+
+- 卡片：`rounded-xl border bg-card`，hover 边框加深一级（照 ARP 的 `hover:border-zinc-300`）。
+- 分段控件外壳：`rounded-xl bg-secondary p-1`，选中项 `bg-card shadow-sm`。
+- 预设 chip：`rounded-full border px-3 py-1 font-mono text-xs`，选中 `bg-emerald-50 border-emerald-300 text-emerald-700`。
+- 危险/停止按钮：`bg-rose-50 text-rose-600 border-rose-200`（照 `options-interaction-expanded.png`）。
+
+## 7. 面板宽度对照
+
+ARP 的面板有 `min-width:480px` 且内部还有一层 `overflow-y-scroll` 容器
+（`flex flex-1 flex-col gap-4 overflow-y-scroll bg-zinc-50 px-4`）。
+本扩展沿用同样的宽度与滚动结构，保证视觉比例与截图一致。
+
+## 8. 组件清单（实现时的文件对应）
+
+| 组件 | 文件 | 职责 |
+| --- | --- | --- |
+| `App` | `components/App.tsx` | 拉 `options` + `session`，分发 `OPTIONS_PATCH` |
+| `Header` | `components/Header.tsx` | 主按钮、状态摘要 |
+| `IntervalSection` | `components/IntervalSection.tsx` | 模式分段 + 三套子面板 |
+| `SegmentedControl` | `components/ui/SegmentedControl.tsx` | 通用分段控件（可选图标） |
+| `NumberStepper` | `components/ui/NumberStepper.tsx` | 居中大数字 + −/+ + 校验 |
+| `RefreshTypeSection` | `components/RefreshTypeSection.tsx` | 刷新类型 + XHR 选择器 |
+| `OptionsSection` | `components/OptionsSection.tsx` | 折叠容器 + 6 行开关 |
+| `SwitchRow` | `components/ui/SwitchRow.tsx` | 图标 + 标题 + 副标题 + 右控件，支持展开子内容 |
+| `Select` | `components/ui/Select.tsx` | 下拉（重定向） |
