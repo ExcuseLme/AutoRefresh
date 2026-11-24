@@ -1,5 +1,7 @@
+import type { ClickAction } from '@/lib/options';
 import type { ContentCommand, ContentEvent, SelectorProbe } from '@/lib/messages';
 import { describeElement, simulateClick } from '@/lib/dom-click';
+import { startPicker, stopPicker } from '@/lib/picker';
 import { KEEP_ACTIVE_STORAGE_KEY } from '@/lib/keep-active';
 
 /**
@@ -67,12 +69,12 @@ export default defineContentScript({
     document.addEventListener('keydown', onKeyDown);
 
     /**
-     * XHR 模式：模拟一次"真实点击"来触发页面自身的请求（ADR-009 / ADR-015）
+     * XHR 模式：模拟一次"真实点击"来触发页面自身的请求（ADR-009 / ADR-015 / ADR-020）
      *
      * 实现细节见 `@/lib/dom-click`：必须派发完整的 pointer/mouse 序列，
      * 只调 `el.click()` 对 Gmail / 网易邮箱这类 SPA 无效（实测 0 请求）。
      */
-    function autoClick(selector: string): 'ok' | 'not-found' | 'invalid' {
+    function autoClick(selector: string, action: ClickAction = 'single'): 'ok' | 'not-found' | 'invalid' {
       const trimmed = selector.trim();
       if (!trimmed) return 'not-found';
       let el: Element | null = null;
@@ -83,7 +85,7 @@ export default defineContentScript({
       }
       if (!el) return 'not-found';
       try {
-        simulateClick(el, window);
+        simulateClick(el, { action, view: window });
         return 'ok';
       } catch {
         return 'invalid';
@@ -127,11 +129,30 @@ export default defineContentScript({
     chrome.runtime.onMessage.addListener((msg: ContentCommand, _sender, sendResponse) => {
       switch (msg?.type) {
         case 'AUTOCLICK': {
-          sendResponse({ result: autoClick(msg.selector) });
+          sendResponse({ result: autoClick(msg.selector, msg.action) });
           return false;
         }
         case 'TEST_SELECTOR': {
           sendResponse(probeSelector(msg.selector));
+          return false;
+        }
+        case 'PICKER_START': {
+          // 拾取器回调走 runtime.sendMessage 回 SW（不能走 sendResponse，
+          // 因为用户点选是异步的，远超 sendResponse 的同步窗口）
+          const ok = startPicker({
+            onPick: (selector, preview) => {
+              send({ type: 'PICKER_RESULT', selector, preview });
+            },
+            onCancel: (reason) => {
+              send({ type: 'PICKER_CANCELLED', reason });
+            },
+          });
+          sendResponse({ ok });
+          return false;
+        }
+        case 'PICKER_STOP': {
+          stopPicker();
+          sendResponse({ ok: true });
           return false;
         }
         case 'SET_INTERACTION': {

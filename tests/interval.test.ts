@@ -6,7 +6,6 @@ type IntervalInput = Pick<
   Options,
   | 'intervalMode'
   | 'fixedSeconds'
-  | 'customSeconds'
   | 'randomMinSeconds'
   | 'randomMaxSeconds'
   | 'avoidRepeatRandom'
@@ -16,7 +15,6 @@ function make(over: Partial<IntervalInput>): IntervalInput {
   return {
     intervalMode: 'fixed',
     fixedSeconds: 10,
-    customSeconds: 12,
     randomMinSeconds: 5,
     randomMaxSeconds: 6,
     avoidRepeatRandom: true,
@@ -48,13 +46,19 @@ describe('nextDelayMs · fixed', () => {
   });
 });
 
-describe('nextDelayMs · custom', () => {
-  it('自定义档返回配置秒数', () => {
-    expect(nextDelayMs(make({ intervalMode: 'custom', customSeconds: 7 }))).toBe(7000);
+describe('nextDelayMs · fixed 是唯一数据源（ADR-021）', () => {
+  it('任意非预设值（如自定义输入的 7 秒）直接生效', () => {
+    expect(nextDelayMs(make({ intervalMode: 'fixed', fixedSeconds: 7 }))).toBe(7000);
+    expect(nextDelayMs(make({ intervalMode: 'fixed', fixedSeconds: 13 }))).toBe(13000);
   });
 
-  it('自定义值非法时被夹到 1 秒', () => {
-    expect(nextDelayMs(make({ intervalMode: 'custom', customSeconds: 0 }))).toBe(1000);
+  it('非法值被夹到 1 秒（防迁移脏数据）', () => {
+    expect(nextDelayMs(make({ intervalMode: 'fixed', fixedSeconds: 0 }))).toBe(1000);
+  });
+
+  it('不存在 custom 模式了', () => {
+    const modes: IntervalInput['intervalMode'][] = ['fixed', 'random'];
+    expect(modes).toHaveLength(2);
   });
 });
 

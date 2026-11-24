@@ -5,10 +5,10 @@ import {
   ensureKeepActive,
   setAutoDiscardable,
 } from '@/lib/keep-active-runtime';
-import type { ContentEvent, PopupCommand, StateSnapshot, TimerCommand, TimerEvent } from '@/lib/messages';
+import type { ContentCommand, ContentEvent, ErrorCode, PopupCommand, StateSnapshot, TimerCommand, TimerEvent } from '@/lib/messages';
 import { armTimer, disarmTimer, ensureOffscreen, pingOffscreen } from '@/lib/offscreen-client';
 import type { Options } from '@/lib/options';
-import { probeSelector, runRefresh } from '@/lib/refresh';
+import { probeSelector, runRefresh, sendToContent } from '@/lib/refresh';
 import { createSession, type Session } from '@/lib/session';
 import { acceptsInteraction, canPause, canResume } from '@/lib/session-machine';
 import { loadSessions, saveSessions } from '@/lib/session-store';
@@ -111,6 +111,103 @@ export default defineBackground(() => {
     }
   }
 
+  // ────────────────────────────────────────────────────────────── 元素拾取器
+
+  /** 当前正在拾取的标签页（同一时刻只允许一个，避免用户在两个标签页都进入拾取态） */
+  let pickerTabId: number | null = null;
+
+  async function startPicker(tabId: number): Promise<{ ok: boolean; code?: ErrorCode }> {
+    await ensureReady();
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    if (!tab || !isRefreshableUrl(tab.url)) return { ok: false, code: 'err_page_unavailable' };
+
+    // 先撤掉别的标签页上残留的拾取器（用户可能在切换标签页后重新点按钮）
+    if (pickerTabId !== null && pickerTabId !== tabId) await stopPicker(pickerTabId);
+
+    const res = await sendToContent<{ ok: boolean }>(tabId, { type: 'PICKER_START' });
+    if (!res?.ok) return { ok: false, code: 'err_page_unavailable' };
+
+    pickerTabId = tabId;
+    // 让用户知道"现在处于拾取态"：徽章显示十字/放大镜语义的字符
+    try {
+      await chrome.action.setBadgeText({ text: '⊕', tabId });
+      await chrome.action.setBadgeBackgroundColor({ color: '#6366f1', tabId });
+    } catch {
+      /* 忽略 */
+    }
+    return { ok: true };
+  }
+
+  async function stopPicker(tabId: number): Promise<void> {
+    await sendToContent<{ ok: boolean }>(tabId, { type: 'PICKER_STOP' });
+    if (pickerTabId === tabId) pickerTabId = null;
+    // 恢复该标签页原本的徽章状态（运行中 ● / 暂停 II / 失败 ! / 清空）
+    await restoreBadge(tabId);
+  }
+
+  /** 拾取完成后：落库 + 尽力把面板重新打开 */
+  async function applyPickerResult(selector: string): Promise<void> {
+    await ensureReady();
+    const pickedTabId = pickerTabId;
+    pickerTabId = null;
+
+    const result = applyPatch(options, { autoClickSelector: selector });
+    if (result.ok) {
+      options = result.options;
+      await setOptions(options);
+    }
+
+    if (pickedTabId !== null) await restoreBadge(pickedTabId, '✓');
+    await reopenPopup();
+  }
+
+  /**
+   * 尽量把 popup 重新打开。
+   *
+   * 为什么需要：用户去页面点元素时 popup 一定已经被关闭（点面板外部即关闭，
+   * 这是浏览器行为，无法阻止）。`chrome.action.openPopup` 自 Chrome 127 起对所有扩展开放，
+   * 但要求调用处在用户手势的调用链内 —— 拾取结果的回调正好符合。
+   * 失败时静默（用户已能在页内卡片上看到结果，徽章也有反馈）。
+   */
+  async function reopenPopup(): Promise<void> {
+    try {
+      await chrome.action.openPopup();
+    } catch {
+      /* 无手势上下文 / 被策略拦截：靠页内卡片与徽章兜底 */
+    }
+  }
+
+  /** 按会话状态重设徽章；`flash` 给一个临时字符（拾取成功的 ✓） */
+  async function restoreBadge(tabId: number, flash?: string): Promise<void> {
+    const s = sessions.get(tabId);
+    const set = async (text: string, color: string) => {
+      try {
+        await chrome.action.setBadgeText({ text, tabId });
+        await chrome.action.setBadgeBackgroundColor({ color, tabId });
+      } catch {
+        /* 忽略 */
+      }
+    };
+
+    if (flash) {
+      await set(flash, '#22c55e');
+      await sleep(1200);
+    }
+    if (!s) {
+      await set('', '#22c55e');
+      return;
+    }
+    const failed = Boolean(s.lastError);
+    if (failed) await set('!', '#dc2626');
+    else if (s.status === 'pause') await set('II', '#f59e0b');
+    else if (s.status === 'start') await set('●', '#22c55e');
+    else await set('…', '#22c55e');
+  }
+
+  function sleep(ms: number): Promise<void> {
+    return new Promise((r) => setTimeout(r, ms));
+  }
+
   async function start(tabId: number): Promise<{ ok: true } | { ok: false; code: 'err_page_unavailable' }> {
     await ensureReady();
     const tab = await chrome.tabs.get(tabId).catch(() => null);
@@ -198,6 +295,7 @@ export default defineBackground(() => {
       hardRefresh: options.hardRefresh,
       redirection: options.redirection,
       autoClickSelector: options.autoClickSelector,
+      autoClickAction: options.autoClickAction,
       canonicalUrl: s.canonicalUrl,
       keepActive: options.keepActive,
       ensureKeepActive,
@@ -379,6 +477,45 @@ export default defineBackground(() => {
         sendResponse(await probeSelector(m.tabId, m.selector));
       })();
       return true;
+    }
+
+    // ── 元素拾取器（ADR-018）────────────────────────────────────
+    if (msg?.type === 'PICKER_START') {
+      void (async () => {
+        const tabId = (msg as PopupCommand & { tabId: number }).tabId;
+        const started = await startPicker(tabId);
+        sendResponse(started);
+      })();
+      return true;
+    }
+    if (msg?.type === 'PICKER_STOP') {
+      void (async () => {
+        const tabId = (msg as PopupCommand & { tabId: number }).tabId;
+        await stopPicker(tabId);
+        sendResponse({ ok: true });
+      })();
+      return true;
+    }
+    // 拾取结果：落库 + 尽力把面板重新打开（popup 被点页面时必然已关闭）
+    if (msg?.type === 'PICKER_RESULT') {
+      const evt = msg as ContentEvent & { type: 'PICKER_RESULT'; selector: string };
+      void (async () => {
+        await applyPickerResult(evt.selector);
+      })();
+      sendResponse({ ok: true });
+      return false;
+    }
+    if (msg?.type === 'PICKER_CANCELLED') {
+      const reason = (msg as ContentEvent & { reason?: string }).reason;
+      void (async () => {
+        const tabId = pickerTabId;
+        pickerTabId = null;
+        if (tabId !== null) await restoreBadge(tabId);
+        // 页面导航走时不要再抢开面板：用户已经在别处了
+        if (reason !== 'navigated') await reopenPopup();
+      })();
+      sendResponse({ ok: true });
+      return false;
     }
     if (msg?.type === 'OPTIONS_PATCH') {
       void (async () => {

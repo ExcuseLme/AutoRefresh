@@ -5,15 +5,16 @@
 只有一个键：`options`。**不再有** `domain_config` / `site_scopes` / `custom` / `duration` 等 ARP 的多作用域结构。
 
 ```ts
-// src/lib/storage.ts
-export type IntervalMode = 'fixed' | 'random';
+// src/lib/options.ts
+export type IntervalMode = 'fixed' | 'random';          // v2：'custom' 已删除（ADR-021）
+export type ClickAction = 'single' | 'double';          // XHR 点击方式（ADR-020）
 
 export type Options = {
+  schemaVersion: 2;            // v1 → v2（ADR-021）
+
   // 间隔
   intervalMode: IntervalMode;
-  fixedSeconds: number;        // 预设档命中值为 3/5/10/60；自定义时为任意 >0
-  fixedPreset: 3 | 5 | 10 | 60 | 'custom';   // 用于 UI 选中态（固定档 chip / 自定义）
-  customSeconds: number;       // 全局唯一的"自定义"值（B2/B3）
+  fixedSeconds: number;        // 固定档**唯一**数据源：−/+ ∓1、chip 上屏、手动输入都写它
   randomMinSeconds: number;    // 闭区间下界（B4）
   randomMaxSeconds: number;    // 闭区间上界
   avoidRepeatRandom: boolean;  // 是否避免连续两轮取到同一个值（ADR-006）
@@ -21,6 +22,7 @@ export type Options = {
   // 刷新类型（原「监控」tab 的刷新类型，搬到「间隔」）
   refreshType: 'full' | 'xhr';
   autoClickSelector: string;   // 仅 refreshType==='xhr' 时使用（Q 已确认保留）
+  autoClickAction: ClickAction;// 单击还是双击，仅 xhr 生效
 
   // 通用开关（A1–A7）
   hardRefresh: boolean;        // A1
@@ -35,16 +37,16 @@ export type Options = {
 };
 
 export const DEFAULT_OPTIONS: Options = {
+  schemaVersion: 2,
   intervalMode: 'fixed',
   fixedSeconds: 10,
-  fixedPreset: 10,
-  customSeconds: 10,
   randomMinSeconds: 5,
   randomMaxSeconds: 30,
   avoidRepeatRandom: true,
 
   refreshType: 'full',
   autoClickSelector: '',
+  autoClickAction: 'single',
 
   hardRefresh: false,
   keepActive: false,
@@ -60,28 +62,45 @@ export const DEFAULT_OPTIONS: Options = {
 
 ### 设计取舍
 
-- **`fixedSeconds` 与 `customSeconds` 分开存**：切档时保留用户上次的自定义值（ARP 用
-  `localStorage.time_type` 记"上次模式"，本扩展把"上次自定义值"直接放配置里，更稳）。
-- **`fixedPreset` 存在理由**：自定义值恰好等于 3 的倍数（如自定义输入 5）时，UI 应显示哪个 chip？
-  规则：**命中预设值 ⇒ 选中对应预设 chip；否则选中"自定义"chip 并显示自定义值**。
-  `fixedPreset` 显式记录，避免"值相等但意图不同"的歧义（ARP 用 `customSeconds` 字段做同款消歧，见 `a5` 数组里的 `custom-60`）。
+- **固定档只有一个 `fixedSeconds`（ADR-021）**：v1 曾把 `fixedSeconds` / `customSeconds` / `fixedPreset`
+  分存，用 `fixedPreset` 显式记录"值相等但意图不同"（自定义输入 5 到底该选中"5秒"chip 还是"自定义"chip）。
+  用户实测后明确要求**放弃这种消歧**：−/+、chip、手动输入三者写同一个数字，
+  **值就是意图**（输 5 时"5秒"chip 自然高亮，这是正确的）。因此 v2 删掉 `customSeconds` 与 `fixedPreset`，
+  `intervalMode` 也从 `'fixed' | 'random' | 'custom'` 收成 `'fixed' | 'random'`。
 - **所有时间单位统一为"秒"，且一律为整数（OQ-5 结论）**：ARP 内部秒/毫秒混用
   （`custom_interval` 秒、`nextRefresh` 毫秒、`randomMin/Max` 秒），本扩展在边界处一次性换算，
-  内部只传毫秒。用户明确要求"不要小数, 整数就够用了"，因此 `fixedSeconds` / `customSeconds` /
+  内部只传毫秒。用户明确要求"不要小数, 整数就够用了"，因此 `fixedSeconds` /
   `randomMinSeconds` / `randomMaxSeconds` / `interactionRestartWait` 全部是整数，
   且**拒绝小数输入**（不能用 `Number.parseInt`，它会把 `2.5` 悄悄截成 `2`）。
+- **`autoClickAction` 是纯 UI 选择（ADR-020）**：`'single' | 'double'`，只影响点击时派发几次按下序列，
+  不改变选择器语义。脏值回落 `'single'`（与其它枚举一致，不拒绝整条 patch）。
+
+### v1 → v2 迁移（ADR-021 / R20）
+
+| v1 状态 | v2 结果 |
+| --- | --- |
+| `intervalMode='custom'` + `customSeconds=7` | `intervalMode='fixed'` + `fixedSeconds=7`（**保值，不丢用户设置**） |
+| `intervalMode='fixed'` + `fixedSeconds=60` | 不变 |
+| `intervalMode='random'` | 不变（`customSeconds` / `fixedPreset` 删除） |
+| 只有 `fixedPreset` 没有 `fixedSeconds`（脏数据） | `fixedSeconds = fixedPreset` |
+| `customSeconds` 非法（如 `2.5`） | 不动 `fixedSeconds`，保留原值 |
+
+迁移是**纯形状改写**（`migrateV1ToV2`），之后才走统一校验（ADR-007）。
+顺序不能反：先校验的话，v1 的 `'custom'` 在 v2 枚举里不存在，会被 `pickEnum` 静默变成 `'fixed'`，
+用户的 `customSeconds` 就丢了 —— 这正是 `migrate()` 里"先迁移再校验"的原因。
+`getOptions()` 在首读时把迁移结果**回写一次**，避免每次读取都重跑、也避免 storage 里长期留旧 schema。
 
 ## 2. 不变式（写入时校验，写入失败不落库）
 
 | 字段 | 规则 | 违反时 |
 | --- | --- | --- |
 | `fixedSeconds` | 整数 `>= 1`；`<= 86400`（1 天，防手滑） | 拒绝 + 内联错误（`err_not_integer` / `err_interval_positive` / `err_interval_max`） |
-| `customSeconds` | 整数 `>= 1`；`<= 86400` | 同上 |
 | `randomMinSeconds` | 整数 `>= 1`；`<= 86400` | 同上 |
 | `randomMaxSeconds` | 整数 `>= randomMinSeconds`；`<= 86400` | 同上（跨字段报 `err_random_range`） |
 | `refreshLimitCount` | 整数 `>= 1` | 同上（`err_limit_count`） |
 | `interactionRestartWait` | 整数 `>= 0`，`<= 3600` | 同上（`err_restart_wait`） |
 | `autoClickSelector` | 仅在 `refreshType==='xhr'` 时校验可用性（运行时无效则跳过点击，不清空值） | 运行时降级 |
+| `autoClickAction` | 只能是 `'single'` / `'double'` | 脏值回落 `'single'`（与其它枚举一致，不拒绝整条 patch） |
 
 > 与 ARP 的差异：ARP 会把非法值静默回落到默认（`Kg`：非有限/≤0 ⇒ 12000ms）。
 > 本扩展改为**显式拒绝**，避免"用户以为设了 0.5 秒实际是 12 秒"的错觉。详见 ADR-007。

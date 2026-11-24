@@ -132,6 +132,20 @@ export default function App() {
     [tabId],
   );
 
+  /** 进入元素拾取模式（ADR-018）。popup 会在用户去页面点选时被关闭，结果由 SW 落库 */
+  const pick = useMemo(
+    () =>
+      async (): Promise<{ ok: boolean; message?: string }> => {
+        if (tabId === null) return { ok: false, message: t('err_page_unavailable') };
+        const res = await send<{ ok: boolean; code?: string }>({ type: 'PICKER_START', tabId });
+        if (!res) return { ok: false, message: t('err_picker_unavailable') };
+        if (!res.ok) return { ok: false, message: t(res.code ?? 'err_picker_unavailable') };
+        // 成功：popup 即将因用户去页面点选而关闭，无需再更新界面
+        return { ok: true };
+      },
+    [tabId],
+  );
+
   return (
     <div className="flex max-h-[600px] flex-col bg-[var(--background)]">
       <Header session={session} options={options} control={control} />
@@ -141,7 +155,7 @@ export default function App() {
         ) : (
           <>
             <IntervalSection options={options} patch={patch} />
-            <RefreshTypeSection options={options} patch={patch} probe={probe} />
+            <RefreshTypeSection options={options} patch={patch} probe={probe} pick={pick} />
             <OptionsSection options={options} patch={patch} />
           </>
         )}

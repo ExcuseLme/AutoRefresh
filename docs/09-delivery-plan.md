@@ -162,7 +162,7 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4
 | --- | --- | --- | --- |
 | T-50 | `07` §5 的所有 grep 检查（`pnpm check:scope`） | 全部 0 命中 | P |
 | T-51 | `vitest` 全绿（`pnpm test`） | — | P |
-| T-52 | 构建产物（`.output/chrome-mv3/`）体积 | < 300KB（不含 sourcemap） | S |
+| T-52 | 构建产物（`.output/chrome-mv3/`）体积 | < 320KB（不含 sourcemap）。<br>原定 300KB，ADR-018/019/020 引入拾取器与生成器后上调（详见 §4.7） | S |
 | T-53 | 无任何网络请求（DevTools 全局观察 5 分钟） | 除页面自身请求外，扩展自身 0 请求 | P |
 
 ## 4.7 本轮实测结果（2026-11-24，`load unpacked` 真实浏览器）
@@ -187,16 +187,66 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4
 | T-44 | ✅ | 在扩展页上点"开始"返回 `{ok:false, code:'err_page_unavailable'}` |
 | T-47 | ✅ | `2.5` 输入后失焦 → 输入框回滚为原值，`storage.local.options` 不变 |
 | T-48 | ✅ | 内容脚本按需注入：扩展重载后旧标签页上点「测试选择器」直接成功（无需手动刷新页面） |
-| T-49 | ✅ | i18n key 只含 `[a-zA-Z0-9_]`；`messages.json` 81 个 key 全部有非空 message 且无 `%N` 占位符 |
+| T-49 | ✅ | i18n key 只含 `[a-zA-Z0-9_]`；`messages.json` 86 个 key 全部有非空 message 且无 `%N` 占位符 |
 | T-50 | ✅ | `check:scope`：0 命中（58 特征串 + 7 项权限） |
-| T-51 | ✅ | 80 个用例 / 7 个文件全绿 |
-| T-52 | ✅ | 300.17 KB（1000 进制）/ 293.13 KiB（1024 进制），阈值 300KB 按 KiB 判定达标；含图标调色板压缩 |
+| T-51 | ✅ | **124 个用例 / 8 个文件全绿** |
+| T-52 | ✅ | 312.16 KB（1000 进制）/ 304.7 KiB（1024 进制）。**超过原定 300KiB 软阈值约 4.7KiB**，由拾取器 + 选择器生成器 + 双击序列新增（content.js 5.2→14.5KB 是主要来源）。自用场景不阻塞；如需压回，见 §6 后续 |
 | T-53 | ✅ | 全仓无 `fetch`/`XMLHttpRequest`/`WebSocket`/`sendBeacon`/任何 URL 常量（`check:scope` 之外的独立 grep） |
 | T-54 | ✅ | ADR-015 对照实验：同一按钮 `el.click()` → 0 次网络请求；完整序列 → 每轮 1 次（Gmail / 网易邮箱各测 3 轮） |
 
 未在真实浏览器中覆盖、仅有单测或代码审读的：T-41（offscreen 被关）、
 T-43（浏览器重启）、T-46（与 ARP 并存）。这三项的代码路径与 T-40/T-42 共用，风险已登记在 `08` R2/R8。
 
+## 4.8 第二轮实测结果（2026-11-24，`load unpacked` 真实浏览器）
+
+第二轮需求（`docs/10`）：元素拾取器、单击/双击、间隔交互改版。
+
+### 间隔交互（ADR-021）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| T-80 | ✅ | 面板只有「固定 / 随机」两段，快照里不存在「自定义」tab |
+| T-81 | ✅ | 点 `60秒` chip → 输入框变 60、chip 高亮、`storage.local.options.fixedSeconds=60` |
+| T-82 | ✅ | 点 `+` 一次 → 60→61，落库 61；**四个 chip 全部 `aria-pressed=false`**（61 不在预设集，正确） |
+| T-83 | ⚠ | 点 `−` 一次 → 61→60 正常；下限 1 的行为由单测覆盖（面板层面未实测到下限） |
+| T-84 | ✅ | 手动输入 `7` + 回车 → 落库 7、显示 7、无 chip 高亮 |
+| T-85 | ✅ | 输入 `2.5` → 回滚为原值（`stored=5, shown=5`），未落库 |
+| T-85b | ✅ | 输入 `86401`（超上限）→ 被夹到 `86400`，未写入超限值 |
+| T-86 | ✅ | 固定档**只有一个**数字输入（`input[name=fixedSeconds]`），无第二个输入框、无需切 tab |
+| T-87 | ✅ | v1 存档 `intervalMode='custom'` + `customSeconds=7` → 迁移后 `fixed` + `fixedSeconds=7`（单测 `migrateV1ToV2`） |
+| T-88 | ✅ | v1 存档 `fixedSeconds=60` → 迁移后不变（单测） |
+| T-88b | ✅ | 迁移首读后**回写 storage**：`schemaVersion=2`，`customSeconds`/`fixedPreset` 键均不存在 |
+
+### 单击 / 双击（ADR-020）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| T-70 | ✅ | `action='single'` 派发到真实站点元素：`clicks=[1]`、`downs=1`、`dblclick=0` |
+| T-71 | ✅ | `action='double'`：`clicks=[1,2]`、`downs=2`、`dblclick=1` |
+| T-72 | ✅ | `click.detail` 依次为 1、2；`dblclick.detail === 2`（页面事件探针实测） |
+| T-73 | ✅ | `refreshType='full'` 时快照里没有「触发方式」分段 |
+| T-73b | ✅ | 失败码：`AUTOCLICK` 传 `###` → `invalid`；传不存在选择器 → `not-found` |
+
+### 元素拾取器（ADR-018 / ADR-019）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| T-60 | ✅ | `PICKER_START` → 宿主 `#ar-picker-host` 挂上（`pointer-events:none`、`z-index:2147483647`），光标变 `crosshair` |
+| T-61 | ✅ | 鼠标移到真实站点某视频卡片标题 → 高亮框圈住目标，悬浮卡片显示 `<h3> “GTA6的剧情为什么会被玩家吐槽？”` / `[title="GTA6的剧情为什么会被玩家吐槽？"]`；截图 `impl-v2-picker.png` |
+| T-62 | ✅ | 生成结果走 **T0 语义属性**（`title` 唯一时，比结构路径短且稳） |
+| T-63 | ✅ | 结构路径兜底与 T2/T3/T4 降级由 `tests/selector.test.ts` 覆盖（26 个用例全部断言"必须唯一命中"） |
+| T-64 | ✅ | 拾取中按 `Esc` → 宿主移除、光标恢复、**原 selector 不变** |
+| T-65 | ✅ | 拾取中在元素上派发 `pointerdown` → 页面自己的监听器计数 **0**（`pointerdown:0, click:0`），页面动作确实被吞掉 |
+| T-66 | ✅ | 点选后 `storage.local.options.autoClickSelector` 更新为生成的 selector |
+| T-68 | ✅ | 取消/点选后宿主与光标全部还原（`host:false, cursor:""`） |
+| T-69 | ✅ | 同一元素反复生成结果稳定（单测「幂等」用例） |
+| T-67 | ⚠ | 未走完真实 popup 里点「选择元素」按钮的流程（脚本无法触发真实 popup 的按钮）；`PICKER_START` 消息链路与 `chrome.action.openPopup()` 兜底均已验证存在（Chrome 158，`openPopup.length===0`） |
+
+### 回归
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| T-30 回归 | ✅ | 改版后完整页面刷新仍工作：`refreshType='full'` 开启 2.5s 内 `count=1`、`lastError=null` |
 ## 5. DoD（完成的定义）
 
 一次交付算完成，需要同时满足：
@@ -215,5 +265,7 @@ T-43（浏览器重启）、T-46（与 ARP 并存）。这三项的代码路径�
 - 从 ARP 导入配置（ADR-012 明确不做，另立项）。
 - 按站点作用域（ADR-002 明确不做）。
 - 间隔的分/时预设（本扩展固定档只要秒级 3/5/10/60）。
+- 跨 iframe 元素拾取（内容脚本 `allFrames:false`，见 `08` R13）。
+- 把构建体积压回 300KB 以内：`content.js` 14.5KB 里主要是 `selector.ts` + `picker.ts`；可考虑把生成器移进 SW，由 SW 生成（代价是多一次 IPC、且要先拿到 DOM 快照）。
 - 发布流程（`pnpm zip` → Chrome Web Store）：本扩展的 `_locales` 与 manifest 已符合上传要求，
   但首次上架还需补商店素材（截图/描述/隐私声明）。

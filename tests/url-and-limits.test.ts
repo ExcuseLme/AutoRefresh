@@ -65,7 +65,18 @@ describe('reachedLimit（T-12，ADR-010 用 >= 而非 ARP 的 >）', () => {
 describe('DEFAULT_OPTIONS 与需求对齐（B1）', () => {
   it('固定档默认 10 秒且在预设集合内', () => {
     expect(DEFAULT_OPTIONS.fixedSeconds).toBe(10);
-    expect([3, 5, 10, 60]).toContain(DEFAULT_OPTIONS.fixedPreset);
+    expect([3, 5, 10, 60]).toContain(DEFAULT_OPTIONS.fixedSeconds);
+  });
+
+  it('schema 是 v2，且不再有 custom 相关字段（ADR-021）', () => {
+    expect(DEFAULT_OPTIONS.schemaVersion).toBe(2);
+    expect('customSeconds' in DEFAULT_OPTIONS).toBe(false);
+    expect('fixedPreset' in DEFAULT_OPTIONS).toBe(false);
+  });
+
+  it('默认单击、XHR 选择器为空', () => {
+    expect(DEFAULT_OPTIONS.autoClickAction).toBe('single');
+    expect(DEFAULT_OPTIONS.autoClickSelector).toBe('');
   });
 
   it('默认完整页面刷新、只跟随重定向、忽略输入框为开', () => {

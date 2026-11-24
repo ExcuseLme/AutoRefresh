@@ -1,3 +1,4 @@
+import type { ClickAction } from './options';
 import type { ContentCommand, RefreshFailureCode } from './messages';
 
 export type RefreshOutcome = { ok: true } | { ok: false; reason: RefreshFailureCode };
@@ -21,7 +22,7 @@ async function ensureContentScript(tabId: number): Promise<boolean> {
   }
 }
 
-async function sendToContent<T>(tabId: number, msg: ContentCommand): Promise<T | null> {
+export async function sendToContent<T>(tabId: number, msg: ContentCommand): Promise<T | null> {
   try {
     return (await chrome.tabs.sendMessage(tabId, msg)) as T;
   } catch {
@@ -50,10 +51,15 @@ function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
 
-export async function executeAutoClick(tabId: number, selector: string): Promise<RefreshOutcome> {
+export async function executeAutoClick(
+  tabId: number,
+  selector: string,
+  action: ClickAction = 'single',
+): Promise<RefreshOutcome> {
   const res = await sendToContent<{ result: 'ok' | 'not-found' | 'invalid' }>(tabId, {
     type: 'AUTOCLICK',
     selector,
+    action,
   });
   if (!res) return { ok: false, reason: 'xhr_no_content' };
   const reason: RefreshFailureCode =
@@ -91,6 +97,7 @@ export async function runRefresh(
     hardRefresh: boolean;
     redirection: 'follow' | 'canonical';
     autoClickSelector: string;
+    autoClickAction: ClickAction;
     canonicalUrl: string;
     keepActive: boolean;
     ensureKeepActive: (tabId: number) => Promise<void>;
@@ -105,7 +112,7 @@ export async function runRefresh(
   if (opts.refreshType === 'xhr') {
     const selector = opts.autoClickSelector.trim();
     if (!selector) return { ok: false, reason: 'xhr_no_selector' };
-    return executeAutoClick(tabId, selector);
+    return executeAutoClick(tabId, selector, opts.autoClickAction);
   }
 
   const currentUrl = tab.url ?? '';

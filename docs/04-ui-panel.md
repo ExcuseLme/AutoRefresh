@@ -17,20 +17,26 @@
 │        状态：运行中 · 第 3/10 次 · 下次 8s       │        + 状态摘要（一行）
 ├──────────────────────────────────────────────┤
 │  ⟳ 间隔                                        │  段落 1：间隔
-│  ┌──────────┬──────────┬──────────┐           │
-│  │ 固定 (on) │  随机     │  自定义   │           │  分段控件（3 段）
-│  └──────────┴──────────┴──────────┘           │
-│  [ 3s ][ 5s ][ 10s ][ 60s ][ ✎ 自定义 ]        │  固定档：4 预设 + 自定义 chip
+│  ┌──────────────┬──────────────┐              │
+│  │   固定 (on)   │     随机      │              │  分段控件（**2 段**，ADR-021）
+│  └──────────────┴──────────────┘              │
+│   间隔                                  秒      │
+│   [ − ]      [   10   ]      [ + ]             │  **唯一**的数字输入（可点数字直接输入）
+│  [ 3s ][ 5s ][ 10s ][ 60s ]                    │  4 个快捷 chip（点 = 把数字上屏）
+│  每 10 秒刷新                                   │  摘要
 │  ── 或 ──                                      │
 │  最小 [ 5 ]  最大 [ 30 ]  秒                    │  随机档：两个数字输入 + 摘要
-│  ── 或 ──                                      │
-│  自定义 [ 12.5 ] 秒                             │  自定义档：单个秒输入
 ├──────────────────────────────────────────────┤
 │  ⚡ 刷新类型                                     │  段落 2：刷新类型（从「监控」搬来）
 │  ┌────────────┬────────────┐                  │
 │  │ 完整页面刷新 │  XHR 刷新   │                  │  分段控件（2 段）
 │  └────────────┴────────────┘                  │
-│  [ 自动点击元素选择器 ................ ]         │  仅 XHR 时展开
+│  自动点击元素选择器      [选择元素] [测试选择器]   │  仅 XHR 时展开
+│  [ [aria-label="刷新"] .................... ]    │
+│  触发方式                                       │
+│  ┌────────────┬────────────┐                  │  **单击 / 双击**（ADR-020）
+│  │   单击(on)  │    双击     │                  │
+│  └────────────┴────────────┘                  │
 ├──────────────────────────────────────────────┤
 │  ⚙ 选项                                    ⌃  │  段落 3：可折叠
 │  ⚡ 强制刷新                         [switch]   │
@@ -73,29 +79,54 @@
 
 ### 4.1 间隔段落
 
-- **分段控件**（`IntervalMode`）：固定 / 随机 / 自定义。三段等宽，
-  选中态为白底 + 绿色圆点图标（照 ARP：`interval-fixed.png`）。
+- **分段控件**（`IntervalMode`）：**固定 / 随机**两段（ADR-021 起没有「自定义」）。
+  选中态为白底（照 ARP：`interval-fixed.png`）。
   切换模式**立即落库**（`intervalMode`），不影响正在运行的会话是否重启 ——
   运行中改间隔：只影响**下一轮**的等待时间（ARP 的 `Hx` 在 `optionsChange` 时会重算，见 `05` §4.4）。
-- **固定档**：`[3秒][5秒][10秒][60秒][✎ 自定义]`。
-  - 4 个预设 chip 命中 `fixedPreset` 时高亮（浅绿底 + 绿边）。
-  - `✎ 自定义` chip：点击后行内展开数字输入（不是弹窗），输入即落库。
-  - 数字输入：`input[type=number]` + `step` 步进按钮（−/+），居中大号数字（照 ARP 的 `interval-fixed.png`）。
-    去掉 spinner（`appearance:none`），保留自绘 −/+ 按钮（ARP 用 `no-spinner` 类）。
+- **固定档：只有一个数字输入框**（ADR-021）。它是固定档**唯一的数据来源**：
+
+  | 用户操作 | 行为 | 落库字段 |
+  | --- | --- | --- |
+  | 点 `−` / `+` | 对当前数字 `∓1`（到 1 / 86400 为止） | `fixedSeconds` |
+  | 点预设 chip `3秒/5秒/10秒/60秒` | 把该数字**上屏**到输入框 | `fixedSeconds` |
+  | 点数字直接输入，回车或失焦 | 直接改这个数字；非法（小数/越界）回滚显示，不落库 | `fixedSeconds` |
+
+  - chip 高亮是**纯值匹配**（`fixedSeconds === preset`）：输入 13 时没有 chip 高亮，这是正确的。
+    不再有「命中预设 / 未命中 ⇒ 显示自定义 chip」的消歧。
+  - 数字输入：`input[type=number]` + 自绘 −/+ 按钮，居中大号数字（照 ARP 的 `interval-fixed.png`），
+    去掉 spinner（`appearance:none`，ARP 用 `no-spinner` 类）。
+  - 下方摘要行：`每 10 秒刷新`。
 - **随机档**：两个数字输入「最小(秒)」「最大(秒)」，下方一行摘要
   `每 5–30 秒刷新`；非法（max<min）时把摘要替换成红色提示。
   ARP 的警告文案键 `warning_random_interval` 在本扩展用自写文案（见 `06`）。
-- **自定义档**：一个「秒」输入，下方摘要 `每 12.5 秒刷新`。
-  和固定档里的 `✎ 自定义` chip 共用**同一个字段** `customSeconds`（避免两处不一致）。
+
+> **ADR-021 删掉的东西**（都是用户实测后要求去掉的）：
+> 「自定义」分段、`✎ 自定义` chip、chip 触发的行内第二个数字输入框、
+> 以及 `customOpen` 这个本地状态（它是"改个数字要切 tab"的根源）。
 
 ### 4.2 刷新类型段落（原「监控」tab 的刷新类型）
 
 - 两段分段控件：`完整页面刷新` / `XHR 刷新`，下方一行说明随选中项变化：
   - `完整页面刷新`：`重新加载整个页面`
-  - `XHR 刷新`：`不重新加载页面，点击指定元素以触发页面自身的 AJAX`
-- XHR 选中时展开「自动点击元素选择器」输入（`placeholder="例如 #refresh-btn 或 .load-more"`）。
-  - 运行时用 `document.querySelector` 校验；无效时该轮跳过点击，并在状态摘要里显示弱提示（不弹窗）。
+  - `XHR 刷新`：`不重新加载页面，点击指定元素以触发页面自身的请求`
+- XHR 选中时展开两块内容：
+
+  **① 自动点击元素选择器**（`placeholder="例如 #refresh-btn 或 .load-more"`）
+  - 标题右侧两个按钮，语义不同：
+    | 按钮 | 作用 |
+    | --- | --- |
+    | `选择元素` | 进入页内拾取模式（ADR-018）。点一下页面元素即自动生成并回填 selector |
+    | `测试选择器` | 只读回显：`命中 N 个元素：<div> “刷新”` / `没有匹配到元素` / `选择器语法无效` |
+  - 拾取中按钮文案变 `选择中…`；用户去页面点选时 popup 会被关闭（浏览器行为），
+    结果由 SW 落库并尽力 `chrome.action.openPopup()` 重新打开面板，徽章闪 `✓`。
+  - 运行时用 `document.querySelector` 校验；无效时该轮不计次数、红字告警（`05` §7.3）。
   - **去掉 ARP 的 premium 皇冠**（原控件右上角有 `高级版` 标签，见 `monitor-refresh-type.png`）。
+
+  **② 触发方式**：`单击` / `双击` 两段（ADR-020）
+  - 双击 = 两次完整按下序列 + `dblclick`，`click.detail` 依次 1、2 ——
+    适合"双击页面内子 tab 才触发局部刷新"的页面。
+  - 下方一行说明随选项变化（`click_single_desc` / `click_double_desc`）。
+  - 该分段只在 `refreshType === 'xhr'` 时出现（整页刷新没有"点哪儿"的问题）。
 
 ### 4.3 选项段落（可折叠，默认展开；记住折叠状态）
 
@@ -177,12 +208,14 @@ ARP 的面板有 `min-width:480px` 且内部还有一层 `overflow-y-scroll` 容
 
 | 组件 | 文件 | 职责 |
 | --- | --- | --- |
-| `App` | `components/App.tsx` | 拉 `options` + `session`，分发 `OPTIONS_PATCH` |
-| `Header` | `components/Header.tsx` | 主按钮、状态摘要 |
-| `IntervalSection` | `components/IntervalSection.tsx` | 模式分段 + 三套子面板 |
-| `SegmentedControl` | `components/ui/SegmentedControl.tsx` | 通用分段控件（可选图标） |
-| `NumberStepper` | `components/ui/NumberStepper.tsx` | 居中大数字 + −/+ + 校验 |
-| `RefreshTypeSection` | `components/RefreshTypeSection.tsx` | 刷新类型 + XHR 选择器 |
+| `App` | `entrypoints/popup/App.tsx` | 拉 `options` + `session`，分发 `OPTIONS_PATCH` / `PICKER_START` |
+| `Header` | `components/Header.tsx` | 主按钮、状态摘要、失败红字 |
+| `IntervalSection` | `components/IntervalSection.tsx` | 两段模式 + **单一**数字输入 + 4 个快捷 chip + 随机区间 |
+| `RefreshTypeSection` | `components/RefreshTypeSection.tsx` | 刷新类型 + 选择器（含「选择元素」/「测试选择器」）+ 单击/双击 |
 | `OptionsSection` | `components/OptionsSection.tsx` | 折叠容器 + 6 行开关 |
-| `SwitchRow` | `components/ui/SwitchRow.tsx` | 图标 + 标题 + 副标题 + 右控件，支持展开子内容 |
-| `Select` | `components/ui/Select.tsx` | 下拉（重定向） |
+| `SegmentedControl` | `components/ui/index.tsx` | 通用分段控件（`role=tablist`） |
+| `NumberStepper` | `components/ui/index.tsx` | 居中大数字 + −/+ + 严格整数校验 |
+| `SwitchRow` / `Switch` / `Select` | `components/ui/index.tsx` | 开关行 / 开关 / 下拉 |
+| 拾取器覆盖层 | `lib/picker.ts` | 页内 shadow DOM 覆盖层、捕获阶段监听、Esc/右键取消（ADR-018） |
+| 选择器生成器 | `lib/selector.ts` | 5 层降级 + 稳定性启发式 + 唯一性判定 + 最小化（ADR-019） |
+| 点击序列 | `lib/dom-click.ts` | 完整 pointer/mouse 序列；单击 / 双击（ADR-015 / ADR-020） |

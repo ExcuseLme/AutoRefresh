@@ -43,7 +43,8 @@ export function SegmentedControl({
   );
 }
 
-/** 踏步输入：居中大数字 + 自绘 −/+（docs/04 §4.1）。回车/失焦提交 */
+/** 踏步输入：居中大数字 + 自绘 −/+。回车/失焦提交
+ *  −/+ 对同一个数字做 ∓1（ADR-021：不是"在预设间跳转"） */
 export function NumberStepper({
   value,
   min,
@@ -52,6 +53,8 @@ export function NumberStepper({
   name,
   onSubmit,
   autoFocus = false,
+  decreaseLabel = 'decrease',
+  increaseLabel = 'increase',
 }: {
   value: number;
   min: number;
@@ -60,6 +63,8 @@ export function NumberStepper({
   name: string;
   onSubmit: (v: number) => void;
   autoFocus?: boolean;
+  decreaseLabel?: string;
+  increaseLabel?: string;
 }) {
   const [draft, setDraft] = useState(String(value));
   const [focused, setFocused] = useState(false);
@@ -84,7 +89,7 @@ export function NumberStepper({
     <div className="flex items-center gap-2">
       <button
         type="button"
-        aria-label="decrease"
+        aria-label={decreaseLabel}
         onClick={() => step(-1)}
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--secondary)] text-[var(--secondary-foreground)] transition hover:border-[var(--primary)]"
       >
@@ -117,7 +122,7 @@ export function NumberStepper({
       />
       <button
         type="button"
-        aria-label="increase"
+        aria-label={increaseLabel}
         onClick={() => step(1)}
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--secondary)] text-[var(--secondary-foreground)] transition hover:border-[var(--primary)]"
       >

@@ -17,20 +17,12 @@ export function clampSeconds(v: number): number {
 export function nextDelayMs(
   opt: Pick<
     Options,
-    | 'intervalMode'
-    | 'fixedSeconds'
-    | 'customSeconds'
-    | 'randomMinSeconds'
-    | 'randomMaxSeconds'
-    | 'avoidRepeatRandom'
+    'intervalMode' | 'fixedSeconds' | 'randomMinSeconds' | 'randomMaxSeconds' | 'avoidRepeatRandom'
   >,
   prevDelayMs = 0,
   rng: () => number = Math.random,
 ): number {
   switch (opt.intervalMode) {
-    case 'custom':
-      return clampSeconds(opt.customSeconds) * 1000;
-
     case 'random': {
       const min = clampSeconds(opt.randomMinSeconds);
       const max = clampSeconds(opt.randomMaxSeconds);

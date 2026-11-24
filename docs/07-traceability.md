@@ -30,8 +30,8 @@
 
 | # | 用户要求 | ARP 证据 | 本扩展落点 | 用例 |
 | --- | --- | --- | --- | --- |
-| B1 | 固定档改 3/5/10/60 秒 | `chunks/popup-BcW0V7JR.js` `a5` 数组：`{id:'5000',amount:'5'}`、`'10000'/10`、`'15000'/15`、`{id:'custom-60',amount:'60',customSeconds:60}`、`'300000'/5(分)`、`'600000'/10`、`'900000'/15`；值映射 `Fde={'stand-5000':5e3,...}`；schema `time_type` 允许 `stand-5000|10000|15000|300000|600000|900000|custom|timer|rand` | `03` `fixedPreset` 只留 3/5/10/60；`04` §4.1 | T-20 |
-| B2 | 自定义可输入 >0 任意值 | 固定档内自定义 chip：`{id:'custom-60',customSeconds:60}` + `onCustomIntervalChange` ⇒ `{time_type:'custom', custom_interval:e}`；`qg()` 中 `if(n==='custom') return Kg(e.custom_interval*1e3)`，`Kg`：`>0` 否则回落 12000 | `03` `customSeconds`；`05` §2 `clampSeconds`；ADR-007 改为**拒绝非法** | T-21 |
+| B1 | 固定档改 3/5/10/60 秒 | `chunks/popup-BcW0V7JR.js` `a5` 数组：`{id:'5000',amount:'5'}`、`'10000'/10`、`'15000'/15`、`{id:'custom-60',amount:'60',customSeconds:60}`、`'300000'/5(分)`、`'600000'/10`、`'900000'/15`；值映射 `Fde={'stand-5000':5e3,...}`；schema `time_type` 允许 `stand-5000|10000|15000|300000|600000|900000|custom|timer|rand` | `03` `fixedSeconds` **单一数据源**（ADR-021 起删 `fixedPreset`/`customSeconds`，预设只作 UI 快捷数字）；`04` §4.1 | T-20 / T-81..T-88 |
+| B2 | 自定义可输入 >0 任意值 | 固定档内自定义 chip：`{id:'custom-60',customSeconds:60}` + `onCustomIntervalChange` ⇒ `{time_type:'custom', custom_interval:e}`；`qg()` 中 `if(n==='custom') return Kg(e.custom_interval*1e3)`，`Kg`：`>0` 否则回落 12000 | `03` 固定档唯一 `fixedSeconds`（ADR-021）；`05` §2 `clampSeconds`；ADR-007 改为**拒绝非法** | T-21 / T-82..T-87 |
 | B3 | 自定义值全局同步 | ARP 反证：`custom_interval` 属域级 schema（`cl`/`Pd` 均含 `custom_interval` 且存在 `domains`/`global` 双层），并且用 `localStorage.time_type` 记"上次模式"（`zde()` 中 `localStorage.getItem('time_type') || 'stand-5000'`）—— 值仍按作用域分存 | `03` §1 `customSeconds` 单字段；`01` §E-2 | T-22 |
 | B4 | 随机间隔 min/max 闭区间，每轮重取 | `background.js` `qg()`：`r=Number.isInteger(t); i = r ? n-t+1 : n-t; a = Math.random()*i+t; return Kg(r? Math.floor(a)*1e3 : Math.floor(a*1e3))`；`$_()` 提供"避免与上一轮相同"，重试上限 10；默认 `randomMin:5, randomMax:30`（`_l.randomMin/randomMax`） | `05` §2 `nextDelayMs`；`03` `avoidRepeatRandom` | T-23 |
 | B5 | 随机范围合法性 | popup 快照：最小 `valuemin=1`，最大 `valuemin` 随最小变化（`uid=2_2 value=5 valuemin=1`, `uid=2_4 value=30 valuemin=6`）；`f=async(e,t)=>{let n=Math.max(e,0); i(t==='min'?{randomMin:n}:{randomMax:n})}` | `03` §2 不变式；`04` §4.1 内联报错 | T-24 |
@@ -42,6 +42,8 @@
 | --- | --- | --- | --- | --- |
 | C1 | 完整页面刷新 | `background.js` `Ux={FULL:'1', XHR_REFRESH:'2'}`；`pmOptions.refresh` 默认 `'1'`（`pl()` 中 `pmOptions:{refresh:'1',...}`）；UI `full_page`=`完整页面刷新`、`refresh_type_help`（zh "完整页面刷新"描述：重新加载整个 URL） | `05` §3.2；`03` `refreshType:'full'` | T-30 |
 | C2 | XHR 刷新 | `background.js`：`Fx()` 判 `pmOptions.refresh===Ux.XHR_REFRESH && await G('xhr')`；`Q_()`：`if(await G('xhr') && n.pmOptions.refresh==='2' && n.autoclick) → vh('autoClick',{selector:n.autoclick,hints})`；`Ix()`：`if(await Fx(e) && r.autoclick && t) await Q_(e)`；`Jw()`/`Zw()` 中 `u && !d ? (Jw(e),Q_(e)) : dx(...)` ⇒ **XHR 不 reload**；内容脚本 `G('autoClick', ... Vd(selector) → Tp(element))`；UI `without_full`=`XHR 刷新`，带 premium 皇冠（截图 `monitor-refresh-type.png`） | `05` §7（保留选择器、去掉 premium，用户已确认）；**点击必须是完整 pointer/mouse 序列**（`05` §7.2 / ADR-015，实测 `el.click()` 对 Gmail/网易邮箱 0 生效）；失败轮次不计次数（`05` §7.3 / ADR-016）；面板内置「测试选择器」（`05` §7.4） | T-31 / T-31d / T-31e / T-54 |
+| C2b | 单击 / 双击 | ARP 只有单击（`Tp(el)` 单次 `click`），无双击概念 | `05` §7.7 / ADR-020：`autoClickAction` 决定派发 1 轮还是 2 轮按下序列 + `dblclick` | T-70..T-73 |
+| C2c | 元素拾取器（新增） | ARP 有 `selectorHints`（用户手动 pick 提示）+ premium `cssxSelectors`，其拾取器本身也是自建覆盖层 | `10` §1 / ADR-018 / ADR-019：`lib/picker.ts` + `lib/selector.ts`，**不引入 `debugger` 权限** | T-60..T-69 |
 | C2a | 刷新类型从「监控」tab 搬到「间隔」tab | popup 快照：`监控` tab 下第一张卡片即「刷新类型」（`uid=6_0/6_1/6_3/6_4`）；`间隔` tab 无此控件 | `04` §4.2（位于间隔段落之后、选项之前，**不再有监控 tab**） | T-32 |
 
 ## 5. 丢弃项（逐项对应证据，防止"复活"）
@@ -79,10 +81,10 @@
 | A5 重定向行为 | `src/lib/url.ts` `pickTargetUrl`、`refresh.ts` | `tests/url-and-limits.test.ts`；手工：302 场景下 follow 继续 `/target`、canonical 拉回 `/anchor` |
 | A6 忽略输入框 | `src/lib/interaction.ts` | `tests/session-and-interaction.test.ts`；手工：`ignoreInputField` true/false 各点一次输入框 |
 | B1 固定档 3/5/10/60 | `src/lib/options.ts` `FIXED_PRESETS` | `tests/url-and-limits.test.ts`（默认值断言） |
-| B2 自定义整数秒 | `src/lib/number-input.ts`、`options.ts` `clampSeconds` | `tests/number-input.test.ts`、`tests/interval.test.ts` |
+| B2 固定档可输任意整数秒 | `src/lib/number-input.ts`、`options.ts` `fixedSeconds` | `tests/number-input.test.ts`、`tests/interval.test.ts`、`tests/validate.test.ts`（`migrateV1ToV2` 保值） |
 | B3 自定义全局同步 | `src/lib/storage.ts`（单 key `options`） | 手工：改自定义值后换标签页仍一致 |
 | B4/B5 随机闭区间 | `src/lib/interval.ts` `nextDelayMs` | `tests/interval.test.ts`（13 例，含边界与去重） |
-| C1/C2/C2a 刷新类型 | `src/components/RefreshTypeSection.tsx`、`refresh.ts`、`content.ts`、`dom-click.ts` | `check:scope` 无 premium；`tests/dom-click.test.ts` 断言点击序列；手工：Gmail/网易邮箱真实站点均每轮产生页面自身 XHR |
+| C1/C2/C2a 刷新类型 | `src/components/RefreshTypeSection.tsx`、`refresh.ts`、`content.ts`、`dom-click.ts`、`selector.ts`、`picker.ts` | `check:scope` 无 premium；`tests/dom-click.test.ts`（单击/双击序列）、`tests/selector.test.ts`（5 层降级与唯一性）；手工：Gmail/网易邮箱每轮产生页面自身 XHR；真实站点实测拾取器产出唯一 selector |
 | 会话恢复（SW 被回收） | `src/lib/session-store.ts`、`background.ts` `ensureReady` | 手工：60s 间隔启动 → 重载扩展 → 会话仍在 `storage.session` |
 
 ## 6. 非功能要求

@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { SegmentedControl } from './ui';
 
 import { t } from '@/lib/i18n';
-import type { Options, RefreshType } from '@/lib/options';
+import type { ClickAction, Options, RefreshType } from '@/lib/options';
 
 type PatchFn = (next: Partial<Options>) => Promise<{ ok: boolean; code?: string }>;
 
@@ -11,7 +11,12 @@ const TYPE_ITEMS = [
   { value: 'xhr' as const, labelKey: 'refresh_xhr', descKey: 'refresh_xhr_desc' },
 ];
 
-/** 选择器探测结果（面板内展示，docs/05 §7.1） */
+const ACTION_ITEMS = [
+  { value: 'single' as const, labelKey: 'click_single' },
+  { value: 'double' as const, labelKey: 'click_double' },
+];
+
+/** 选择器探测结果（面板内展示，docs/05 §7.4） */
 type ProbeState =
   | { kind: 'idle' }
   | { kind: 'testing' }
@@ -22,13 +27,17 @@ export function RefreshTypeSection({
   options,
   patch,
   probe,
+  pick,
 }: {
   options: Options;
   patch: PatchFn;
   probe: (selector: string) => Promise<ProbeState>;
+  /** 进入元素拾取模式（ADR-018）；面板会在用户去页面点选时被关闭 */
+  pick: () => Promise<{ ok: boolean; message?: string }>;
 }) {
   const current = TYPE_ITEMS.find((i) => i.value === options.refreshType) ?? TYPE_ITEMS[0]!;
   const [probeState, setProbeState] = useState<ProbeState>({ kind: 'idle' });
+  const [picking, setPicking] = useState(false);
 
   const selector = options.autoClickSelector;
 
@@ -36,6 +45,14 @@ export function RefreshTypeSection({
     setProbeState({ kind: 'testing' });
     const res = await probe(selector);
     setProbeState(res);
+  };
+
+  const onPick = async () => {
+    setPicking(true);
+    setProbeState({ kind: 'idle' });
+    const res = await pick();
+    setPicking(false);
+    if (!res.ok && res.message) setProbeState({ kind: 'fail', message: res.message });
   };
 
   return (
@@ -51,41 +68,68 @@ export function RefreshTypeSection({
         <p className="mt-2 text-[11px] leading-relaxed text-[var(--muted-foreground)]">{t(current.descKey)}</p>
 
         {options.refreshType === 'xhr' ? (
-          <div className="mt-3 border-t border-[var(--border)] pt-3">
-            <div className="mb-1.5 flex items-center justify-between gap-2">
-              <p className="text-xs text-[var(--muted-foreground)]">{t('refresh_xhr_selector')}</p>
-              <button
-                type="button"
-                onClick={() => void onTest()}
-                disabled={probeState.kind === 'testing' || selector.trim() === ''}
-                className="rounded-md border border-[var(--border)] px-2 py-0.5 text-[11px] font-medium text-[var(--muted-foreground)] transition hover:border-[var(--primary)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
-              >
-                {probeState.kind === 'testing' ? t('status_loading') : t('selector_test')}
-              </button>
+          <>
+            <div className="mt-3 border-t border-[var(--border)] pt-3">
+              <div className="mb-1.5 flex items-center justify-between gap-2">
+                <p className="text-xs text-[var(--muted-foreground)]">{t('refresh_xhr_selector')}</p>
+                <div className="flex items-center gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => void onPick()}
+                    disabled={picking}
+                    className="rounded-md border border-[var(--border)] px-2 py-0.5 text-[11px] font-medium text-[var(--muted-foreground)] transition hover:border-[var(--primary)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {picking ? t('pick_element_active') : t('pick_element')}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void onTest()}
+                    disabled={probeState.kind === 'testing' || selector.trim() === ''}
+                    className="rounded-md border border-[var(--border)] px-2 py-0.5 text-[11px] font-medium text-[var(--muted-foreground)] transition hover:border-[var(--primary)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {probeState.kind === 'testing' ? t('status_loading') : t('selector_test')}
+                  </button>
+                </div>
+              </div>
+              <input
+                type="text"
+                name="autoClickSelector"
+                autoComplete="off"
+                className="w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 font-mono text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--primary)]"
+                placeholder={t('refresh_xhr_selector_placeholder')}
+                aria-label={t('refresh_xhr_selector')}
+                value={selector}
+                onChange={(e) => {
+                  setProbeState({ kind: 'idle' });
+                  void patch({ autoClickSelector: e.currentTarget.value });
+                }}
+              />
+              {probeState.kind === 'ok' ? (
+                <p className="mt-1.5 text-[11px] leading-tight text-[var(--primary)]">
+                  {t('selector_test_ok', [probeState.count])}
+                  <span className="font-mono">{probeState.preview}</span>
+                </p>
+              ) : null}
+              {probeState.kind === 'fail' ? (
+                <p className="mt-1.5 text-[11px] leading-tight text-[var(--destructive)]">{probeState.message}</p>
+              ) : null}
             </div>
-            <input
-              type="text"
-              name="autoClickSelector"
-              autoComplete="off"
-              className="w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 font-mono text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--primary)]"
-              placeholder={t('refresh_xhr_selector_placeholder')}
-              aria-label={t('refresh_xhr_selector')}
-              value={selector}
-              onChange={(e) => {
-                setProbeState({ kind: 'idle' });
-                void patch({ autoClickSelector: e.currentTarget.value });
-              }}
-            />
-            {probeState.kind === 'ok' ? (
-              <p className="mt-1.5 text-[11px] leading-tight text-[var(--primary)]">
-                {t('selector_test_ok', [probeState.count])}
-                <span className="font-mono">{probeState.preview}</span>
+
+            <div className="mt-3 border-t border-[var(--border)] pt-3">
+              <p className="mb-1.5 text-xs text-[var(--muted-foreground)]">{t('click_action')}</p>
+              <div className="max-w-[220px]">
+                <SegmentedControl
+                  value={options.autoClickAction}
+                  ariaLabel={t('click_action')}
+                  items={ACTION_ITEMS.map((i) => ({ value: i.value, label: t(i.labelKey) }))}
+                  onChange={(v) => void patch({ autoClickAction: v as ClickAction })}
+                />
+              </div>
+              <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+                {options.autoClickAction === 'double' ? t('click_double_desc') : t('click_single_desc')}
               </p>
-            ) : null}
-            {probeState.kind === 'fail' ? (
-              <p className="mt-1.5 text-[11px] leading-tight text-[var(--destructive)]">{probeState.message}</p>
-            ) : null}
-          </div>
+            </div>
+          </>
         ) : null}
       </div>
     </section>

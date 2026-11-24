@@ -1,4 +1,4 @@
-import type { Options } from './options';
+import type { ClickAction, Options } from './options';
 
 /** popup → SW */
 export type PopupCommand =
@@ -8,7 +8,11 @@ export type PopupCommand =
   | { type: 'RESUME'; tabId: number }
   | { type: 'OPTIONS_PATCH'; patch: Partial<Options> }
   | { type: 'GET_STATE'; tabId: number }
-  | { type: 'TEST_SELECTOR'; tabId: number; selector: string };
+  | { type: 'TEST_SELECTOR'; tabId: number; selector: string }
+  /** 进入元素拾取模式（ADR-018） */
+  | { type: 'PICKER_START'; tabId: number }
+  /** 取消元素拾取模式 */
+  | { type: 'PICKER_STOP'; tabId: number };
 
 /** SW → offscreen */
 export type TimerCommand =
@@ -27,17 +31,38 @@ export type SelectorProbe =
   | { result: 'not-found'; count: 0 }
   | { result: 'invalid' };
 
+/** 拾取器的实时回显（用户在页面上移动鼠标时） */
+export type PickerPreview = {
+  selector: string;
+  /** 命中的层级，用于卡片上标注（semantic / path / …） */
+  tier: string;
+  /** 是否推荐（较长路径会提示"可能失效"） */
+  long: boolean;
+  /** 元素摘要，如 `<div> “刷新”` */
+  preview: string;
+  /** 该元素在 Shadow DOM 内（不支持） */
+  shadow: boolean;
+};
+
 /** SW → content script（走 chrome.tabs.sendMessage） */
 export type ContentCommand =
-  | { type: 'AUTOCLICK'; selector: string }
+  | { type: 'AUTOCLICK'; selector: string; action: ClickAction }
   | { type: 'TEST_SELECTOR'; selector: string }
+  | { type: 'PICKER_START' }
+  | { type: 'PICKER_STOP' }
   | { type: 'SET_INTERACTION'; enabled: boolean }
   | { type: 'CLEAR_KEEP_ACTIVE' };
 
 /** content script → SW（走 chrome.runtime.sendMessage） */
 export type ContentEvent =
   | { type: 'INTERACTION'; isInput: boolean }
-  | { type: 'CONTENT_READY' };
+  | { type: 'CONTENT_READY' }
+  /** 拾取成功：带回生成的 selector */
+  | { type: 'PICKER_RESULT'; selector: string; preview: string }
+  /** 拾取被取消（Esc / 右键 / 页面导航走） */
+  | { type: 'PICKER_CANCELLED'; reason?: string }
+  /** 拾取过程中的实时回显（仅用于 SW 转发给 popup，可选） */
+  | { type: 'PICKER_PREVIEW'; preview: PickerPreview | null };
 
 export type RoutedMessage = { to: 'offscreen' } & TimerCommand;
 
@@ -56,7 +81,8 @@ export type ErrorCode =
   | 'err_interval_max'
   | 'err_random_range'
   | 'err_limit_count'
-  | 'err_restart_wait';
+  | 'err_restart_wait'
+  | 'err_picker_unavailable';
 
 /**
  * 运行期刷新失败的 code（不是表单校验错误）。

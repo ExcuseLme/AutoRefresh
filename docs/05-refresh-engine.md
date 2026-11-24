@@ -397,6 +397,37 @@ XHR 区标题右侧有「测试选择器」按钮，点一下立刻回显（不�
 - XHR 不改变 URL ⇒ `canonical`/`follow` 在 XHR 模式下**无差别**（UI 上可把该行置灰，但保留用户选择）。
 - 次数上限照常生效（且只统计成功的轮次，见 §7.3）。
 
+### 7.7 单击 / 双击（ADR-020）
+
+`autoClickAction` 决定 `simulateClick` 派发几轮按下序列：
+
+| 值 | 事件序列 | 说明 |
+| --- | --- | --- |
+| `single` | 悬停 5 个 → 按下 4 个 → `click(detail:1)` | 共 10 个事件 |
+| `double` | 悬停 5 个 → 按下 4 个 → `click(detail:1)` → 按下 4 个 → `click(detail:2)` → `dblclick(detail:2)` | 共 16 个事件 |
+
+**双击同步派发、不加人为延时**：真实浏览器的双击判定窗口约 400ms，0ms 间隔必然落在窗口内；
+而 `setTimeout` 反而给页面机会在两次点击之间重渲染，第二次可能打到已脱离文档的元素。
+第二按**不重发** `pointerover`/`mouseover`（真实浏览器也不会）。
+
+覆盖两种页面实现：
+- 用 `dblclick` 判定的页面 → 收到 `dblclick`
+- 用 `event.detail` 递增判定的页面 → 收到 `click.detail = 1, 2`
+
+活体验证（2026-11-24，真实站点元素）：`single` ⇒ `clicks=[1], downs=1, dbl=0`；
+`double` ⇒ `clicks=[1,2], downs=2, dbl=1, dblDetail=2`。
+
+### 7.8 选择器由拾取器生成（ADR-018 / ADR-019）
+
+XHR 的 selector 不再只能手输。「选择元素」进入页内拾取模式后，用户点一下目标元素即可得到
+**唯一命中**的 selector（5 层降级：语义属性 → 短结构路径 → id → class → 兜底组合）。
+
+拾取结果经 SW 的 `applyPatch` 落库（不允由内容脚本直接写 storage，保持 `03` §6 的读写纪律），
+随后 SW 尽力 `chrome.action.openPopup()` 把面板重新打开（用户点页面时 popup 必然已被浏览器关闭）。
+
+拾取器**不参与刷新链路**：它只是一次性的"生成 selector"工具，停止后完全拆除覆盖层与监听。
+点击链路始终是"一条 selector 直达"，没有运行时兜底匹配（OQ-7 已明确否决指纹方案）。
+
 ## 8. 时序图（完整刷新）
 
 ```
