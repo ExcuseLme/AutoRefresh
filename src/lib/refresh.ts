@@ -1,8 +1,33 @@
-import type { ContentCommand } from './messages';
+import type { ContentCommand, RefreshFailureCode } from './messages';
 
-export type RefreshOutcome = { ok: true } | { ok: false; reason: string };
+export type RefreshOutcome = { ok: true } | { ok: false; reason: RefreshFailureCode };
+
+/**
+ * 内容脚本按需注入（ADR-014）。
+ *
+ * 场景：扩展安装/更新之前就已经打开的标签页，浏览器不会补注入 content script，
+ * 于是 `tabs.sendMessage` 直接抛 "Could not establish connection"。
+ * 这里用 `chrome.scripting.executeScript` 手动注入兜底，避免用户必须先刷新页面才能用。
+ */
+async function ensureContentScript(tabId: number): Promise<boolean> {
+  try {
+    await chrome.scripting.executeScript({
+      target: { tabId },
+      files: ['content-scripts/content.js'],
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
 
 async function sendToContent<T>(tabId: number, msg: ContentCommand): Promise<T | null> {
+  try {
+    return (await chrome.tabs.sendMessage(tabId, msg)) as T;
+  } catch {
+    /* 首次失败通常是"扩展更新前就开着的页面"没有内容脚本，注入后重试一次 */
+  }
+  if (!(await ensureContentScript(tabId))) return null;
   try {
     return (await chrome.tabs.sendMessage(tabId, msg)) as T;
   } catch {
@@ -30,8 +55,27 @@ export async function executeAutoClick(tabId: number, selector: string): Promise
     type: 'AUTOCLICK',
     selector,
   });
-  if (!res) return { ok: false, reason: 'xhr-no-content' };
-  return res.result === 'ok' ? { ok: true } : { ok: false, reason: `xhr-${res.result}` };
+  if (!res) return { ok: false, reason: 'xhr_no_content' };
+  const reason: RefreshFailureCode =
+    res.result === 'invalid' ? 'xhr_invalid' : res.result === 'not-found' ? 'xhr_not_found' : 'xhr_not_found';
+  return res.result === 'ok' ? { ok: true } : { ok: false, reason };
+}
+
+/** 探测选择器（面板「测试」按钮）。设计依据 docs/05 §7.1 */
+export async function probeSelector(
+  tabId: number,
+  selector: string,
+): Promise<
+  { ok: true; count: number; preview: string } | { ok: false; reason: 'xhr_no_content' | 'xhr_not_found' | 'xhr_invalid' }
+> {
+  const res = await sendToContent<{
+    result: 'ok' | 'not-found' | 'invalid';
+    count?: number;
+    preview?: string;
+  }>(tabId, { type: 'TEST_SELECTOR', selector });
+  if (!res) return { ok: false, reason: 'xhr_no_content' };
+  if (res.result === 'ok') return { ok: true, count: res.count ?? 1, preview: res.preview ?? '' };
+  return { ok: false, reason: res.result === 'invalid' ? 'xhr_invalid' : 'xhr_not_found' };
 }
 
 /**
@@ -53,14 +97,14 @@ export async function runRefresh(
   },
 ): Promise<RefreshOutcome> {
   const tab = await chrome.tabs.get(tabId).catch(() => null);
-  if (!tab) return { ok: false, reason: 'tab-gone' };
+  if (!tab) return { ok: false, reason: 'tab_gone' };
 
   // keep-active 必须在本轮刷新前续期（docs/05 §3.2），否则 reload 期间可能被判后台
   if (opts.keepActive) await opts.ensureKeepActive(tabId);
 
   if (opts.refreshType === 'xhr') {
     const selector = opts.autoClickSelector.trim();
-    if (!selector) return { ok: false, reason: 'xhr-no-selector' };
+    if (!selector) return { ok: false, reason: 'xhr_no_selector' };
     return executeAutoClick(tabId, selector);
   }
 

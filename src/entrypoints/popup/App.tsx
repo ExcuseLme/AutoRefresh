@@ -103,6 +103,35 @@ export default function App() {
     [tabId],
   );
 
+  /** 探测选择器：把 SW 的三种失败 code 翻成面板可读文案（docs/05 §7.1） */
+  const probe = useMemo(
+    () =>
+      async (
+        selector: string,
+      ): Promise<
+        | { kind: 'idle' }
+        | { kind: 'testing' }
+        | { kind: 'ok'; count: number; preview: string }
+        | { kind: 'fail'; message: string }
+      > => {
+        if (tabId === null) return { kind: 'fail', message: t('err_page_unavailable') };
+        const res = await send<
+          { ok: true; count: number; preview: string } | { ok: false; reason: string }
+        >({ type: 'TEST_SELECTOR', tabId, selector });
+        if (!res) return { kind: 'fail', message: t('xhr_no_content') };
+        if (res.ok) return { kind: 'ok', count: res.count, preview: res.preview };
+        // 测试按钮的文案用"探测"口径（不带"本轮未刷新"，因为这里本来就不刷新）
+        const message =
+          res.reason === 'xhr_invalid'
+            ? t('selector_test_invalid')
+            : res.reason === 'xhr_not_found'
+              ? t('selector_test_none')
+              : t(res.reason);
+        return { kind: 'fail', message };
+      },
+    [tabId],
+  );
+
   return (
     <div className="flex max-h-[600px] flex-col bg-[var(--background)]">
       <Header session={session} options={options} control={control} />
@@ -112,7 +141,7 @@ export default function App() {
         ) : (
           <>
             <IntervalSection options={options} patch={patch} />
-            <RefreshTypeSection options={options} patch={patch} />
+            <RefreshTypeSection options={options} patch={patch} probe={probe} />
             <OptionsSection options={options} patch={patch} />
           </>
         )}

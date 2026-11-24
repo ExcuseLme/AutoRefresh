@@ -6,6 +6,8 @@
  *                   └→ wait（交互 restart 的延迟）→ start
  * ARP 的 `countdown` / `complete` 两个状态在本扩展合并掉（无倒计时、无"完成"语义）。
  */
+import type { RefreshFailureCode } from './messages';
+
 export type SessionStatus = 'start' | 'pause' | 'wait';
 
 export type WaitReason = 'interaction';
@@ -29,8 +31,13 @@ export type Session = {
   prevDelayMs: number;
   /** status==='wait' 时的原因 */
   waitReason?: WaitReason;
-  /** 最近一次执行失败的说明（如 XHR 选择器无效），面板可读 */
-  lastError?: string;
+  /**
+   * 最近一次执行失败的 code（如 XHR 选择器无效）。
+   * 失败的一轮**不计入 count**，面板据此显示红字告警与红色徽章（docs/05 §7.2）。
+   */
+  lastError?: RefreshFailureCode;
+  /** 连续失败轮次（成功一轮即清零）；仅用于面板展示与诊断 */
+  failedRounds?: number;
 };
 
 /** 会话只存在内存里并由 SW 镜像到 storage.session；浏览器重启不恢复（docs/03 §4） */

@@ -106,6 +106,52 @@
 - **决策**：`/docs` 进 git；每个里程碑在 `README` 的变更记录里加一行，`07` 的矩阵随实现补充"落点"列。
 - **后果**：review 时先看 `07` 有没有新增未登记的偏离。
 
+### ADR-014 · 内容脚本按需注入（补历史标签页）
+
+- **背景**：扩展安装/更新之前就打开的标签页，浏览器不会补注入 content script；
+  `chrome.tabs.sendMessage` 抛 `Could not establish connection`，早期实现直接判失败，
+  用户体验是"必须刷新一次页面扩展才能用"。
+- **决策**：`sendToContent` 首次失败后 `chrome.scripting.executeScript({files:['content-scripts/content.js']})`
+  再重试一次。失败才注入，成功路径零开销。
+- **后果**：`scripting` 权限的用途扩大一处（本来就为 keep-active 的 MAIN world 注入申请了）。
+  重复注入是安全的 —— content script 的 `chrome.runtime.onMessage.addListener` 会重复注册，
+  但因为每份实例都在独立执行上下文里持有自己的 `interactionEnabled`，行为无副作用；
+  自愈脚本里的 `__arKeepActivePatched` 标记也保证补丁不重复安装。
+
+### ADR-015 · XHR 的"点击"必须是完整 pointer/mouse 序列
+
+- **背景**（实测，不是推测）：2026-11-24 用真实浏览器对照测量，
+  对 Gmail 收件箱刷新按钮与网易邮箱刷新按钮：
+  `el.click()` → **0 次**网络请求；完整 pointer/mouse 序列 → **每轮 1 次**。
+  原因是这类 SPA 把交互逻辑挂在 `pointerdown` / `mousedown` 上。
+- **决策**：`src/lib/dom-click.ts` 按浏览器真实顺序派发
+  `pointerover → pointerenter → mouseover → mouseenter → mousemove → pointerdown → mousedown → pointerup → mouseup → click`，
+  down 阶段 `buttons: 1`、up 阶段 `buttons: 0`，全部 `bubbles+cancelable+view`，并先 `scrollIntoView`。
+- **后果**：不再依赖 `el.click()` 的"事件合成捷径"。**能力上限**：`isTrusted` 恒为 false，
+  无法绕过需要真实用户手势的页面 —— 这是浏览器安全模型边界，不是缺陷。
+  `tests/dom-click.test.ts` 用 happy-dom 断言序列与冒泡行为。
+
+### ADR-016 · 失败轮次不计入刷新次数
+
+- **背景**：用户实测踩到"面板计数在涨但页面一次都没刷新"的误导。
+  根因是把"尝试过一轮"当成了"刷新了一轮"。
+- **决策**：`executeRound` 中**只有 `outcome.ok` 才 `count += 1`**；
+  失败时记 `lastError`（`RefreshFailureCode`）、累加 `failedRounds`、徽章变红，
+  但仍按原间隔重试（用户改正选择器即可自愈）。
+- **后果**：`count` 的语义从"尝试次数"收紧为"**成功次数**"，与用户直觉一致；
+  与 ARP 的计数口径不同（ARP 不区分成功失败），`07` 的 T-12/T-31 按本扩展口径验收。
+
+### ADR-017 · i18n key 必须只用 `[a-zA-Z0-9_]`
+
+- **背景**：实现期把运行期失败 code 写成 `xhr-not-found` 并直接作为 `_locales` 的 key，
+  导致**扩展加载直接失败**：`Name of a key "tab-gone" is invalid.
+  Only ASCII [a-z], [A-Z], [0-9] and "_" are allowed.`
+- **决策**：所有 `ErrorCode` / `RefreshFailureCode` 同时作为 locale key，
+  因此统一用下划线命名（`xhr_not_found`、`tab_gone`…）。
+  `tests/i18n.test.ts` 增加一条断言把这类错误挡在构建前。
+- **后果**：错误码不再能写连字符；`RefreshFailureCode` 与 locale key 一一对应，
+  面板可以直接 `t(session.lastError)`。
+
 ## 2. 开放问题（**已全部关闭**，结论见下表；实现按结论落地）
 
 | ID | 问题 | 结论（用户已确认或已采纳默认） | 落地 |

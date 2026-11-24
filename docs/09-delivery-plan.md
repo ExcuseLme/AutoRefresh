@@ -138,9 +138,9 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4
 | ID | 用例 | 预期 | P/S |
 | --- | --- | --- | --- |
 | T-30 | 完整页面刷新 | 每轮整页重载（Network 出现 main_frame 请求） | P |
-| T-31 | XHR 刷新 + 选择器指向"加载更多"按钮 | 每轮该按钮被点击，页面不整页重载 | P |
-| T-31b | XHR 刷新 + 选择器为空 | 不重载、不报错；状态摘要提示"需要先设置选择器" | P |
-| T-31c | XHR 刷新 + 选择器无效（`#nope`） | 不报错崩溃；`lastError` 记录 | S |
+| T-31 | XHR 刷新 + 选择器指向"加载更多"按钮 | 每轮该按钮被**完整点击序列**命中（见 `05` §7.2），页面不整页重载 | P |
+| T-31b | XHR 刷新 + 选择器为空 | 不重载、不崩溃；红字「未设置自动点击元素选择器，本轮未刷新」，`count` 不涨 | P |
+| T-31c | XHR 刷新 + 选择器无效（`#nope`） | 不崩溃；红字「选择器没有匹配到元素…」，徽章变红，`count` 不涨 | P |
 | T-32 | 检查"刷新类型"所在位置 | 在"间隔"段落内（间隔之后、选项之前），且不存在"监控"tab | P |
 
 ### §4.5 鲁棒性
@@ -177,18 +177,25 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4
 | T-14 / T-14b | ✅ | follow：302 后服务端记录连续 `/target`；canonical：起点 `/anchor`、中途手动导航到 `/target`，下一轮被拉回 `/anchor` |
 | T-15 / T-15b | ✅ | `ignoreInputField=true` 点输入框后会话仍 `start`；`false` 时同一操作导致会话被清除 |
 | T-30 | ✅ | 完整刷新：服务端 `loads` 逐轮 +1 |
-| T-31 | ✅ | XHR：服务端 `clicks=3 / loads=3`；停止后不再增长 |
+| T-31 | ✅ | XHR（本机测试站）：服务端 `clicks=3 / loads=3`；停止后不再增长 |
+| T-31d | ✅ | XHR（**Gmail 收件箱**真实站点，选择器 `[aria-label="刷新"]`）：3s 间隔 11s 内触发 4 次 `/sync/u/0/i/s?…`，`count=4`、`lastError=null` |
+| T-31e | ✅ | XHR（**网易邮箱**真实站点，选择器 `#_mail_button_212_1083 > span`）：3s 间隔 8s 内触发 9 次 `/js6/s?…func=mbox:listMessages`，`count=3`、`lastError=null` |
+| T-31c | ✅ | 失效选择器 `#_mail_button_228_1148 > span`：`count=0` 不涨、`lastError='xhr_not_found'`、`failedRounds` 递增（2s×7s 内为 4） |
+| T-31f | ✅ | 面板「测试选择器」：命中 → `命中 1 个元素：<div> “刷新”`；多命中 → `48`；语法错 → `xhr_invalid`；未命中 → `xhr_not_found` |
 | T-40 | ✅ | 60s 间隔运行中重载扩展：`storage.session.sessions` 仍持有该会话（`armedAt/delayMs/timerToken` 齐全），SW 重新就绪后恢复 ARM |
 | T-42 | ✅ | 关闭运行中的标签页：`storage.session.sessions` 变为 `{}` |
 | T-44 | ✅ | 在扩展页上点"开始"返回 `{ok:false, code:'err_page_unavailable'}` |
 | T-47 | ✅ | `2.5` 输入后失焦 → 输入框回滚为原值，`storage.local.options` 不变 |
+| T-48 | ✅ | 内容脚本按需注入：扩展重载后旧标签页上点「测试选择器」直接成功（无需手动刷新页面） |
+| T-49 | ✅ | i18n key 只含 `[a-zA-Z0-9_]`；`messages.json` 81 个 key 全部有非空 message 且无 `%N` 占位符 |
 | T-50 | ✅ | `check:scope`：0 命中（58 特征串 + 7 项权限） |
-| T-51 | ✅ | 69 个用例 / 6 个文件全绿 |
-| T-52 | ✅ | 296.85 KB（含图标 26.7→4.9KB 的调色板压缩；不含 sourcemap） |
+| T-51 | ✅ | 80 个用例 / 7 个文件全绿 |
+| T-52 | ✅ | 300.17 KB（1000 进制）/ 293.13 KiB（1024 进制），阈值 300KB 按 KiB 判定达标；含图标调色板压缩 |
 | T-53 | ✅ | 全仓无 `fetch`/`XMLHttpRequest`/`WebSocket`/`sendBeacon`/任何 URL 常量（`check:scope` 之外的独立 grep） |
+| T-54 | ✅ | ADR-015 对照实验：同一按钮 `el.click()` → 0 次网络请求；完整序列 → 每轮 1 次（Gmail / 网易邮箱各测 3 轮） |
 
-未在真实浏览器中覆盖、仅有单测或代码审读的：T-31c（无效选择器）、T-41（offscreen 被关）、
-T-43（浏览器重启）、T-46（与 ARP 并存）。这四项的代码路径与 T-31/T-40/T-42 共用，风险已登记在 `08` R2/R4/R8。
+未在真实浏览器中覆盖、仅有单测或代码审读的：T-41（offscreen 被关）、
+T-43（浏览器重启）、T-46（与 ARP 并存）。这三项的代码路径与 T-40/T-42 共用，风险已登记在 `08` R2/R8。
 
 ## 5. DoD（完成的定义）
 

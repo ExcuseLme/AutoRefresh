@@ -27,5 +27,9 @@ export default defineConfig({
   },
   vite: () => ({
     plugins: [tailwindcss()],
+    build: {
+      // 本扩展所有入口都在扩展内加载，不需要 module preload 的 polyfill（省 ~670B）
+      modulePreload: { polyfill: false },
+    },
   }),
 });

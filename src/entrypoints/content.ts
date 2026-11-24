@@ -1,4 +1,5 @@
-import type { ContentCommand, ContentEvent } from '@/lib/messages';
+import type { ContentCommand, ContentEvent, SelectorProbe } from '@/lib/messages';
+import { describeElement, simulateClick } from '@/lib/dom-click';
 import { KEEP_ACTIVE_STORAGE_KEY } from '@/lib/keep-active';
 
 /**
@@ -65,7 +66,12 @@ export default defineContentScript({
     document.addEventListener('click', onClickCapture, true);
     document.addEventListener('keydown', onKeyDown);
 
-    /** XHR 模式：点击指定选择器，触发页面自身的请求（ADR-009） */
+    /**
+     * XHR 模式：模拟一次"真实点击"来触发页面自身的请求（ADR-009 / ADR-015）
+     *
+     * 实现细节见 `@/lib/dom-click`：必须派发完整的 pointer/mouse 序列，
+     * 只调 `el.click()` 对 Gmail / 网易邮箱这类 SPA 无效（实测 0 请求）。
+     */
     function autoClick(selector: string): 'ok' | 'not-found' | 'invalid' {
       const trimmed = selector.trim();
       if (!trimmed) return 'not-found';
@@ -77,11 +83,29 @@ export default defineContentScript({
       }
       if (!el) return 'not-found';
       try {
-        (el as HTMLElement).click();
+        simulateClick(el, window);
         return 'ok';
       } catch {
         return 'invalid';
       }
+    }
+
+    /** 探测选择器（面板「测试」按钮用）：不点击，只回报命中数与元素摘要 */
+    function probeSelector(selector: string): SelectorProbe {
+      const trimmed = selector.trim();
+      if (!trimmed) return { result: 'not-found', count: 0 };
+      let nodes: Element[];
+      try {
+        nodes = [...document.querySelectorAll(trimmed)];
+      } catch {
+        return { result: 'invalid' };
+      }
+      if (nodes.length === 0) return { result: 'not-found', count: 0 };
+      return {
+        result: 'ok',
+        count: nodes.length,
+        preview: describeElement(nodes[0]!),
+      };
     }
 
     /**
@@ -104,6 +128,10 @@ export default defineContentScript({
       switch (msg?.type) {
         case 'AUTOCLICK': {
           sendResponse({ result: autoClick(msg.selector) });
+          return false;
+        }
+        case 'TEST_SELECTOR': {
+          sendResponse(probeSelector(msg.selector));
           return false;
         }
         case 'SET_INTERACTION': {

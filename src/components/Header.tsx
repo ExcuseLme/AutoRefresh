@@ -32,6 +32,13 @@ function statusLine(session: Session | null, options: Options): string {
   }
 }
 
+/** 失败告警文案（docs/05 §7.2）：明确说是"本轮未生效"，避免"计数在涨但其实没点"的误解 */
+function failureText(session: Session): string {
+  const n = session.failedRounds ?? 0;
+  const base = t(session.lastError ?? 'xhr_not_found');
+  return n > 1 ? `${base} ${t('status_failed_times', [n])}` : base;
+}
+
 export function Header({
   session,
   options,
@@ -107,9 +114,9 @@ export function Header({
       {error ? (
         <p className="px-4 pb-2 text-[11px] leading-tight text-[var(--destructive)]">{error}</p>
       ) : null}
-      {session?.lastError === 'xhr-no-selector' && options.refreshType === 'xhr' ? (
-        <p className="px-4 pb-2 text-[11px] leading-tight text-[var(--muted-foreground)]">
-          {t('hint_xhr_needs_selector')}
+      {session?.lastError ? (
+        <p className="px-4 pb-2 text-[11px] leading-tight text-[var(--destructive)]">
+          {failureText(session)}
         </p>
       ) : null}
     </header>

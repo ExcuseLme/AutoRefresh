@@ -310,7 +310,6 @@ if (opts.refreshType === 'xhr') {
       .catch(() => {/* 内容脚本不在（页面未注入）时静默 */});
   } else {
     // 没有选择器：XHR 模式什么都不做（等价于空转一轮）
-    // UI 在状态摘要里给弱提示：'XHR 刷新需要先设置自动点击选择器'
   }
   // 不 reload、不 update URL
 }
@@ -321,10 +320,82 @@ if (opts.refreshType === 'xhr') {
 - 选择器解析：`document.querySelector` 失败时，**不抛错**，只把失败写入会话 `lastError`（面板可显示）。
 - 与 keep-active 的关系：XHR 模式不 reload ⇒ 不需要重打补丁，但仍需 `autoDiscardable=false`。
 
-### 7.1 XHR 模式下的"刷新次数"与重定向
+### 7.2 「点击」必须是完整事件序列，不能只用 `el.click()`（ADR-015）
+
+**这是实现期实测出来的关键点，不是推测。**
+
+2026-11-24 在真实浏览器里对两个站点做了对照测量（每轮清空 `performance` 缓冲，
+并用 `XMLHttpRequest.prototype.send` / `window.fetch` 计数器交叉验证）：
+
+| 点击方式 | Gmail 收件箱「刷新」 | 网易邮箱「刷新」 |
+| --- | --- | --- |
+| `el.click()` | **0 次** `/sync/...` 请求 | **0 次** `mbox:listMessages` 请求 |
+| 完整 pointer/mouse 序列 | 每轮 **1 次** | 每轮 **1 次** |
+
+原因：这些 SPA（Gmail 的 NUI、网易的 js6、大量 React/Vue 后台）把交互逻辑挂在
+`pointerdown` / `mousedown` 上，`click` 只是结果。合成 `MouseEvent('click')` 进不去它们的判定。
+
+所以 `src/lib/dom-click.ts` 按浏览器真实顺序派发：
+
+```
+pointerover → pointerenter → mouseover → mouseenter → mousemove
+→ pointerdown(buttons:1) → mousedown(buttons:1)
+→ pointerup(buttons:0)  → mouseup        → click
+```
+
+细节：
+- 每个事件都带 `bubbles: true, cancelable: true, view: window`；框架常把监听挂在容器上。
+- `pointerdown`/`mousedown` 的 `buttons: 1`，`pointerup`/`mouseup` 的 `buttons: 0` —— 写错会被部分框架判为无效手势。
+- 先 `scrollIntoView({block:'center'})`，否则不可见元素可能不响应。
+- 没有 `PointerEvent` 的环境跳过 pointer 系列，mouse 系列照发。
+
+**能力上限**：合成事件的 `isTrusted` 恒为 `false`，无法伪造。对绝大多数页面够用；
+把 `isTrusted` 当硬性门槛的极少数页面（如需要用户手势才能触发的 API）无法绕过 ——
+这是浏览器安全模型的边界，不是本扩展的缺陷，面板的失败提示会如实反映。
+
+### 7.3 失败语义：失败轮次不计入次数（ADR-016）
+
+用户实测踩到的误导：面板"计数在涨"但页面其实一次都没刷新。
+根因是早期实现把"尝试过一轮"就当成了"刷新了一轮"。现在的规则：
+
+| 情况 | count | `lastError` | 徽章 | 面板 |
+| --- | --- | --- | --- | --- |
+| 点击成功 | +1 | 清空 | ● 绿 | 正常倒计时 |
+| `not-found`（选择器失效） | **不涨** | `xhr_not_found` | **! 红** | 红字「选择器没有匹配到元素（页面结构可能已变化），本轮未刷新」 |
+| `invalid`（语法错） | 不涨 | `xhr_invalid` | ! 红 | 红字 |
+| 内容脚本失联 | 不涨 | `xhr_no_content` | ! 红 | 红字 |
+| 未填选择器 | 不涨 | `xhr_no_selector` | ! 红 | 红字 |
+| 标签页已关闭 | 会话结束 | — | 清空 | 回到「未运行」 |
+
+失败后**仍按原间隔继续重试**（用户改好选择器就能自愈），`failedRounds` 累加并在文案里显示
+「（已连续失败 N 次）」，成功一轮即清零。
+
+### 7.4 面板内置「测试选择器」
+
+XHR 区标题右侧有「测试选择器」按钮，点一下立刻回显（不发请求、不点击）：
+
+| 结果 | 文案 |
+| --- | --- |
+| 命中 | `命中 N 个元素：<div> “刷新”` —— 摘要优先取可见文字，没有文字则取 `aria-label` / `data-tooltip` / `title` |
+| 未命中 | `没有匹配到元素` |
+| 语法错 | `选择器语法无效` |
+
+摘要之所以要读 `aria-label`：像 Gmail 的刷新按钮**只有图标、没有文字**，
+只显示标签名的话用户无法确认选中了哪个。
+
+### 7.5 内容脚本按需注入（ADR-017）
+
+扩展安装/更新**之前**就已经打开的标签页，浏览器不会补注入 content script，
+于是 `tabs.sendMessage` 会抛 `Could not establish connection`。
+早期实现直接判为失败，用户体验是"必须先刷新一次页面才能用扩展"。
+
+现在 `sendToContent` 在首次失败后自动 `chrome.scripting.executeScript({files:['content-scripts/content.js']})`
+再重试一次 —— 用户不需要知道这件事，打开面板点开始就能用。
+
+### 7.6 XHR 模式下的"刷新次数"与重定向
 
 - XHR 不改变 URL ⇒ `canonical`/`follow` 在 XHR 模式下**无差别**（UI 上可把该行置灰，但保留用户选择）。
-- 次数上限照常生效。
+- 次数上限照常生效（且只统计成功的轮次，见 §7.3）。
 
 ## 8. 时序图（完整刷新）
 

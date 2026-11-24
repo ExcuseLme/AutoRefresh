@@ -41,7 +41,7 @@
 | # | 用户要求 | ARP 证据 | 本扩展落点 | 用例 |
 | --- | --- | --- | --- | --- |
 | C1 | 完整页面刷新 | `background.js` `Ux={FULL:'1', XHR_REFRESH:'2'}`；`pmOptions.refresh` 默认 `'1'`（`pl()` 中 `pmOptions:{refresh:'1',...}`）；UI `full_page`=`完整页面刷新`、`refresh_type_help`（zh "完整页面刷新"描述：重新加载整个 URL） | `05` §3.2；`03` `refreshType:'full'` | T-30 |
-| C2 | XHR 刷新 | `background.js`：`Fx()` 判 `pmOptions.refresh===Ux.XHR_REFRESH && await G('xhr')`；`Q_()`：`if(await G('xhr') && n.pmOptions.refresh==='2' && n.autoclick) → vh('autoClick',{selector:n.autoclick,hints})`；`Ix()`：`if(await Fx(e) && r.autoclick && t) await Q_(e)`；`Jw()`/`Zw()` 中 `u && !d ? (Jw(e),Q_(e)) : dx(...)` ⇒ **XHR 不 reload**；内容脚本 `G('autoClick', ... Vd(selector) → Tp(element))`；UI `without_full`=`XHR 刷新`，带 premium 皇冠（截图 `monitor-refresh-type.png`） | `05` §7（保留选择器、去掉 premium，用户已确认） | T-31 |
+| C2 | XHR 刷新 | `background.js`：`Fx()` 判 `pmOptions.refresh===Ux.XHR_REFRESH && await G('xhr')`；`Q_()`：`if(await G('xhr') && n.pmOptions.refresh==='2' && n.autoclick) → vh('autoClick',{selector:n.autoclick,hints})`；`Ix()`：`if(await Fx(e) && r.autoclick && t) await Q_(e)`；`Jw()`/`Zw()` 中 `u && !d ? (Jw(e),Q_(e)) : dx(...)` ⇒ **XHR 不 reload**；内容脚本 `G('autoClick', ... Vd(selector) → Tp(element))`；UI `without_full`=`XHR 刷新`，带 premium 皇冠（截图 `monitor-refresh-type.png`） | `05` §7（保留选择器、去掉 premium，用户已确认）；**点击必须是完整 pointer/mouse 序列**（`05` §7.2 / ADR-015，实测 `el.click()` 对 Gmail/网易邮箱 0 生效）；失败轮次不计次数（`05` §7.3 / ADR-016）；面板内置「测试选择器」（`05` §7.4） | T-31 / T-31d / T-31e / T-54 |
 | C2a | 刷新类型从「监控」tab 搬到「间隔」tab | popup 快照：`监控` tab 下第一张卡片即「刷新类型」（`uid=6_0/6_1/6_3/6_4`）；`间隔` tab 无此控件 | `04` §4.2（位于间隔段落之后、选项之前，**不再有监控 tab**） | T-32 |
 
 ## 5. 丢弃项（逐项对应证据，防止"复活"）
@@ -82,7 +82,7 @@
 | B2 自定义整数秒 | `src/lib/number-input.ts`、`options.ts` `clampSeconds` | `tests/number-input.test.ts`、`tests/interval.test.ts` |
 | B3 自定义全局同步 | `src/lib/storage.ts`（单 key `options`） | 手工：改自定义值后换标签页仍一致 |
 | B4/B5 随机闭区间 | `src/lib/interval.ts` `nextDelayMs` | `tests/interval.test.ts`（13 例，含边界与去重） |
-| C1/C2/C2a 刷新类型 | `src/components/RefreshTypeSection.tsx`、`refresh.ts`、`content.ts` | `check:scope` 无 premium；手工：XHR 模式服务端只记 clicks 不记 loads |
+| C1/C2/C2a 刷新类型 | `src/components/RefreshTypeSection.tsx`、`refresh.ts`、`content.ts`、`dom-click.ts` | `check:scope` 无 premium；`tests/dom-click.test.ts` 断言点击序列；手工：Gmail/网易邮箱真实站点均每轮产生页面自身 XHR |
 | 会话恢复（SW 被回收） | `src/lib/session-store.ts`、`background.ts` `ensureReady` | 手工：60s 间隔启动 → 重载扩展 → 会话仍在 `storage.session` |
 
 ## 6. 非功能要求

@@ -66,6 +66,13 @@ describe('i18n 一致性', () => {
     }
   });
 
+  it('key 只含 [a-zA-Z0-9_]（连字符等会让扩展加载直接失败）', () => {
+    // Chrome 加载报错：Name of a key "xhr-not-found" is invalid.
+    // Only ASCII [a-z], [A-Z], [0-9] and "_" are allowed.
+    const bad = Object.keys(messages).filter((k) => !/^[a-zA-Z0-9_]+$/.test(k));
+    expect(bad).toEqual([]);
+  });
+
   it('带参数的 key 在代码里调用时确实传了参数（粗检：$1 出现即要求有 subs）', () => {
     for (const [k, v] of Object.entries(messages)) {
       if (!v.message.includes('$1')) continue;

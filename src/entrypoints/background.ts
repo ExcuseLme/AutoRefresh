@@ -8,7 +8,7 @@ import {
 import type { ContentEvent, PopupCommand, StateSnapshot, TimerCommand, TimerEvent } from '@/lib/messages';
 import { armTimer, disarmTimer, ensureOffscreen, pingOffscreen } from '@/lib/offscreen-client';
 import type { Options } from '@/lib/options';
-import { runRefresh } from '@/lib/refresh';
+import { probeSelector, runRefresh } from '@/lib/refresh';
 import { createSession, type Session } from '@/lib/session';
 import { acceptsInteraction, canPause, canResume } from '@/lib/session-machine';
 import { loadSessions, saveSessions } from '@/lib/session-store';
@@ -89,10 +89,11 @@ export default defineBackground(() => {
   }
 
   async function updateBadge(): Promise<void> {
-    // OQ-4 默认采纳：运行中绿点、暂停黄点、停止清空
+    // OQ-4：运行中绿点、暂停黄点、失败红叹号、停止清空
     for (const [tabId, s] of sessions) {
-      const text = s.status === 'start' ? '●' : s.status === 'pause' ? 'II' : '…';
-      const color = s.status === 'pause' ? '#f59e0b' : '#22c55e';
+      const failed = Boolean(s.lastError);
+      const text = failed ? '!' : s.status === 'start' ? '●' : s.status === 'pause' ? 'II' : '…';
+      const color = failed ? '#dc2626' : s.status === 'pause' ? '#f59e0b' : '#22c55e';
       try {
         await chrome.action.setBadgeText({ text, tabId });
         await chrome.action.setBadgeBackgroundColor({ color, tabId });
@@ -176,7 +177,10 @@ export default defineBackground(() => {
 
   /**
    * 执行一轮刷新并安排下一轮。设计依据 docs/05 §3.1
-   * 顺序：校验 tab → 刷新 → count++ → 上限判定 → 计算下一轮 → ARM
+   * 顺序：校验 tab → 刷新 → 成功才 count++ → 上限判定 → 计算下一轮 → ARM
+   *
+   * 关键语义（docs/05 §7.2）：**失败的一轮不计入次数**。
+   * 否则会出现"计数在涨但其实一次都没点"的误导（用户实测踩到过）。
    */
   async function executeRound(tabId: number): Promise<void> {
     await ensureReady();
@@ -199,8 +203,23 @@ export default defineBackground(() => {
       ensureKeepActive,
     });
 
-    if (!outcome.ok) s.lastError = outcome.reason;
-    else delete s.lastError;
+    if (!outcome.ok) {
+      // 页面/标签页已不可用：直接收摊，没有继续的意义
+      if (outcome.reason === 'tab_gone') {
+        await stop(tabId);
+        return;
+      }
+      s.lastError = outcome.reason;
+      s.failedRounds = (s.failedRounds ?? 0) + 1;
+      await persist();
+      await updateBadge();
+      // 不计次数，但仍按间隔继续重试（用户可选改选择器后自愈）
+      confirmStarted(s, nextDelayMs(options, s.prevDelayMs));
+      return;
+    }
+
+    delete s.lastError;
+    delete s.failedRounds;
 
     // follow 模式：每轮把当前 URL 记为下一次的基准；canonical 模式不改写（docs/05 §4）
     if (options.redirection === 'follow' && tab.url) s.tabUrl = tab.url;
@@ -352,6 +371,13 @@ export default defineBackground(() => {
     }
     if (msg?.type === 'RESUME') {
       void (async () => sendResponse(await resume((msg as PopupCommand & { tabId: number }).tabId)))();
+      return true;
+    }
+    if (msg?.type === 'TEST_SELECTOR') {
+      void (async () => {
+        const m = msg as PopupCommand & { tabId: number; selector: string };
+        sendResponse(await probeSelector(m.tabId, m.selector));
+      })();
       return true;
     }
     if (msg?.type === 'OPTIONS_PATCH') {
