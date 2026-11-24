@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { applyPatch, migrate, migrateV1ToV2, needsMigration, validateOptions } from '@/lib/validate';
-import { DEFAULT_OPTIONS, FIXED_PRESETS, MAX_INTERVAL_SECONDS } from '@/lib/options';
+import { applyPatch, migrate, migrateV1ToV2, migrateV2ToV3, needsMigration, validateOptions } from '@/lib/validate';
+import { DEFAULT_OPTIONS, FIXED_PRESETS, MAX_INTERVAL_SECONDS, SCHEMA_VERSION } from '@/lib/options';
 
 describe('validateOptions · 合法输入', () => {
   it('全默认值可通过', () => {
@@ -79,11 +79,14 @@ describe('applyPatch', () => {
     }
   });
 
-  it('autoClickAction 只接受 single / double', () => {
-    expect(applyPatch(DEFAULT_OPTIONS, { autoClickAction: 'double' }).ok).toBe(true);
-    const bad = applyPatch(DEFAULT_OPTIONS, { autoClickAction: 'triple' as never });
-    expect(bad.ok).toBe(true); // 脏枚举回落默认，不拒绝（与其它枚举一致）
-    if (bad.ok) expect(bad.options.autoClickAction).toBe('single');
+  it('autoClickAction 已移出 options（ADR-022 改按页面存）', () => {
+    // v3 起 options 里没有 autoClickSelector / autoClickAction，
+    // 它们由 lib/page-selectors.ts 按 URL 隔离存储
+    expect('autoClickAction' in DEFAULT_OPTIONS).toBe(false);
+    expect('autoClickSelector' in DEFAULT_OPTIONS).toBe(false);
+    const res = applyPatch(DEFAULT_OPTIONS, { autoClickAction: 'double' } as never);
+    expect(res.ok).toBe(true);
+    if (res.ok) expect('autoClickAction' in res.options).toBe(false);
   });
 });
 
@@ -155,9 +158,9 @@ describe('migrateV1ToV2（ADR-021 / R20：不能静默丢用户的自定义值�
     expect(out.fixedSeconds).toBe(5);
   });
 
-  it('迁移结果能通过 v2 校验并带 schemaVersion 2', () => {
+  it('迁移结果能通过校验并升到当前 schema（v1 → v3）', () => {
     const out = migrate({ schemaVersion: 1, intervalMode: 'custom', customSeconds: 7 });
-    expect(out.schemaVersion).toBe(2);
+    expect(out.schemaVersion).toBe(SCHEMA_VERSION);
     expect(out.intervalMode).toBe('fixed');
     expect(out.fixedSeconds).toBe(7);
   });
@@ -173,7 +176,51 @@ describe('needsMigration', () => {
 
   it('当前版本不需要迁移', () => {
     expect(needsMigration(DEFAULT_OPTIONS)).toBe(false);
-    expect(needsMigration({ schemaVersion: 2 })).toBe(false);
+    expect(needsMigration({ schemaVersion: SCHEMA_VERSION })).toBe(false);
+  });
+
+  it('旧版本（v1 / v2）都需要迁移', () => {
+    expect(needsMigration({ schemaVersion: 1 })).toBe(true);
+    expect(needsMigration({ schemaVersion: 2 })).toBe(true);
+  });
+});
+
+describe('migrateV2ToV3（ADR-022：全局 selector 移出 options）', () => {
+  it('删掉全局 autoClickSelector / autoClickAction', () => {
+    const out = migrateV2ToV3({
+      schemaVersion: 2,
+      autoClickSelector: '[aria-label="刷新"]',
+      autoClickAction: 'double',
+      fixedSeconds: 10,
+    });
+    expect('autoClickSelector' in out).toBe(false);
+    expect('autoClickAction' in out).toBe(false);
+    expect(out.schemaVersion).toBe(3);
+    // 其它字段原样保留
+    expect(out.fixedSeconds).toBe(10);
+  });
+
+  it('不把旧全局值写到任何页面（pages 里没有任何条目 —— 猜 URL 会点错元素）', () => {
+    const out = migrate({
+      schemaVersion: 2,
+      autoClickSelector: '.some-selector',
+      autoClickAction: 'double',
+    });
+    expect('autoClickSelector' in out).toBe(false);
+    expect('autoClickAction' in out).toBe(false);
+  });
+
+  it('v1 存档会连续迁到 v3', () => {
+    const out = migrate({
+      schemaVersion: 1,
+      intervalMode: 'custom',
+      customSeconds: 7,
+      autoClickSelector: '.old',
+    });
+    expect(out.schemaVersion).toBe(3);
+    expect(out.fixedSeconds).toBe(7);
+    expect(out.intervalMode).toBe('fixed');
+    expect('autoClickSelector' in out).toBe(false);
   });
 });
 

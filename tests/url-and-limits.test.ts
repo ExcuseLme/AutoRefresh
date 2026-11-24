@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { isRefreshableUrl, normalizeUrl, pickTargetUrl, reachedLimit, sameUrl } from '@/lib/url';
-import { DEFAULT_OPTIONS } from '@/lib/options';
+import { DEFAULT_CLICK_ACTION, DEFAULT_OPTIONS } from '@/lib/options';
 
 describe('isRefreshableUrl（T-44）', () => {
   it('接受 http/https', () => {
@@ -68,15 +68,16 @@ describe('DEFAULT_OPTIONS 与需求对齐（B1）', () => {
     expect([3, 5, 10, 60]).toContain(DEFAULT_OPTIONS.fixedSeconds);
   });
 
-  it('schema 是 v2，且不再有 custom 相关字段（ADR-021）', () => {
-    expect(DEFAULT_OPTIONS.schemaVersion).toBe(2);
+  it('schema 是 v3；不再有 custom 相关字段（ADR-021），也没有全局 selector 字段（ADR-022）', () => {
+    expect(DEFAULT_OPTIONS.schemaVersion).toBe(3);
     expect('customSeconds' in DEFAULT_OPTIONS).toBe(false);
     expect('fixedPreset' in DEFAULT_OPTIONS).toBe(false);
+    expect('autoClickSelector' in DEFAULT_OPTIONS).toBe(false);
+    expect('autoClickAction' in DEFAULT_OPTIONS).toBe(false);
   });
 
-  it('默认单击、XHR 选择器为空', () => {
-    expect(DEFAULT_OPTIONS.autoClickAction).toBe('single');
-    expect(DEFAULT_OPTIONS.autoClickSelector).toBe('');
+  it('页面首次配置的默认触发方式是单击', () => {
+    expect(DEFAULT_CLICK_ACTION).toBe('single');
   });
 
   it('默认完整页面刷新、只跟随重定向、忽略输入框为开', () => {

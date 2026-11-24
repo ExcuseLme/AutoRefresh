@@ -142,6 +142,12 @@ M0 ──► M1 ──► M2 ──► M3 ──► M4
 | T-31b | XHR 刷新 + 选择器为空 | 不重载、不崩溃；红字「未设置自动点击元素选择器，本轮未刷新」，`count` 不涨 | P |
 | T-31c | XHR 刷新 + 选择器无效（`#nope`） | 不崩溃；红字「选择器没有匹配到元素…」，徽章变红，`count` 不涨 | P |
 | T-32 | 检查"刷新类型"所在位置 | 在"间隔"段落内（间隔之后、选项之前），且不存在"监控"tab | P |
+| T-90 | 在 A 页选元素并启动 XHR；去 B 页选元素 | A 页会话的点击目标**不变**（ADR-022） | P |
+| T-91 | `pageKey` 忽略 query 与 #hash | 同路径不同 query/hash ⇒ 同一条记录；不同路径 ⇒ 不同记录 | P |
+| T-92 | 触发方式按页面 | A 页 `double` + B 页 `single` 各自独立 | P |
+| T-93 | 会话中途页面跳转（follow） | 仍用**启动时那个页面**的配置，不改去点新页面的元素 | S |
+| T-94 | v2 存档升级 | `autoClickSelector`/`autoClickAction` 被丢弃，其它字段保留，schema=3 | P |
+| T-95 | 页面没有配置就启动 XHR | 该轮 `xhr_no_selector`、不计次数、红字提示；**不回落**到别的页面 | P |
 
 ### §4.5 鲁棒性
 
@@ -241,6 +247,17 @@ T-43（浏览器重启）、T-46（与 ARP 并存）。这三项的代码路径�
 | T-68 | ✅ | 取消/点选后宿主与光标全部还原（`host:false, cursor:""`） |
 | T-69 | ✅ | 同一元素反复生成结果稳定（单测「幂等」用例） |
 | T-67 | ⚠ | 未走完真实 popup 里点「选择元素」按钮的流程（脚本无法触发真实 popup 的按钮）；`PICKER_START` 消息链路与 `chrome.action.openPopup()` 兜底均已验证存在（Chrome 158，`openPopup.length===0`） |
+
+### 按页面隔离 selector（ADR-022，第三轮）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| T-90 | ✅ | A 页（`10.25.150.155:8080/ms/index`）写 `.btn-on-A` 并启动 XHR 会话；去 B 页（`10.25.197.170:19090/…`）写 `[aria-label="B 页的元素"]` 后，A 的 `pageSelector.selector` **仍是 `.btn-on-A`**，`sessionPageKey` 仍指向 A |
+| T-91 | ✅ | 两个同在 `/app/discover` 的标签页（仅 query/hash 不同）合并为**同一条**记录；不同路径各一条 |
+| T-92 | ✅ | A 设 `double`、B 设 `single` 后两条记录各自独立（`isolated: true`） |
+| T-95 | ✅ | A 页 selector 指向不存在的元素 → 该轮 `lastError='xhr_not_found'`、`count` 不涨，且**没有**回落到 B 页的 selector |
+| T-94 | ✅ | 单测 `migrateV2ToV3`：两个全局字段被删、其它字段保留、schema=3；v1 存档连续迁到 v3 |
+| 面板回显 | ✅ | 输入框显示当前页 selector，下方显示 `仅对当前页面生效：http://10.25.150.155:8080/ms/index`（截图 `impl-v3-per-page.png`） |
 
 ### 回归
 

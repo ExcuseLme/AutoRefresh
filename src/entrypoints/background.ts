@@ -7,7 +7,12 @@ import {
 } from '@/lib/keep-active-runtime';
 import type { ContentCommand, ContentEvent, ErrorCode, PopupCommand, StateSnapshot, TimerCommand, TimerEvent } from '@/lib/messages';
 import { armTimer, disarmTimer, ensureOffscreen, pingOffscreen } from '@/lib/offscreen-client';
-import type { Options } from '@/lib/options';
+import { DEFAULT_CLICK_ACTION, type ClickAction, type Options } from '@/lib/options';
+import {
+  getSelectorForUrl,
+  pageKeyOf,
+  setSelectorForUrl,
+} from '@/lib/page-selectors';
 import { probeSelector, runRefresh, sendToContent } from '@/lib/refresh';
 import { createSession, type Session } from '@/lib/session';
 import { acceptsInteraction, canPause, canResume } from '@/lib/session-machine';
@@ -145,20 +150,56 @@ export default defineBackground(() => {
     await restoreBadge(tabId);
   }
 
-  /** 拾取完成后：落库 + 尽力把面板重新打开 */
+  /**
+   * 拾取完成后：**写入该标签页当前 URL 对应的记录** + 尽力把面板重新打开。
+   *
+   * ADR-022：selector 按页面隔离。这里用"拾取所在的标签页 URL"作为 key，
+   * 而不是 options 里的某个全局字段 —— 这样在 B 页选元素不会影响 A 页正在跑的会话。
+   */
   async function applyPickerResult(selector: string): Promise<void> {
     await ensureReady();
     const pickedTabId = pickerTabId;
     pickerTabId = null;
 
-    const result = applyPatch(options, { autoClickSelector: selector });
-    if (result.ok) {
-      options = result.options;
-      await setOptions(options);
+    if (pickedTabId !== null) {
+      const tab = await chrome.tabs.get(pickedTabId).catch(() => null);
+      if (tab?.url) {
+        // 触发方式沿用该页面已有的设置（新页面默认 single）；
+        // 用户在面板里改触发方式时也会走同一个 setSelectorForUrl，因此这里不必额外判断
+        const existing = await getSelectorForUrl(tab.url);
+        await setSelectorForUrl(tab.url, selector, existing?.action ?? DEFAULT_CLICK_ACTION);
+      }
+      await restoreBadge(pickedTabId, '✓');
     }
-
-    if (pickedTabId !== null) await restoreBadge(pickedTabId, '✓');
     await reopenPopup();
+  }
+
+  /** 面板里改 selector（手输 / 清空）：同样写当前页面 */
+  async function setSelectorForTab(tabId: number, selector: string): Promise<{ ok: boolean; code?: ErrorCode }> {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    const key = pageKeyOf(tab?.url);
+    if (!tab || !key) return { ok: false, code: 'err_page_unavailable' };
+    const existing = await getSelectorForUrl(tab.url);
+    const next = await setSelectorForUrl(tab.url, selector, existing?.action ?? DEFAULT_CLICK_ACTION);
+    // 广播给 popup 刷新回显（storage.onChanged 也会触发，这里显式返回让调用方可立即反应）
+    return next ? { ok: true } : { ok: true };
+  }
+
+  /** 面板里改触发方式：只改当前页面那条记录的 action，selector 为空时不建记录 */
+  async function setClickActionForTab(
+    tabId: number,
+    action: ClickAction,
+  ): Promise<{ ok: boolean; code?: ErrorCode }> {
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    const key = pageKeyOf(tab?.url);
+    if (!tab || !key) return { ok: false, code: 'err_page_unavailable' };
+    const existing = await getSelectorForUrl(tab.url);
+    if (!existing) {
+      // 还没有 selector：不建空壳记录，用户的点击方式等拾取到 selector 时一并写入
+      return { ok: true };
+    }
+    await setSelectorForUrl(tab.url, existing.selector, action);
+    return { ok: true };
   }
 
   /**
@@ -290,12 +331,16 @@ export default defineBackground(() => {
       return;
     }
 
+    // ADR-022：XHR 的 selector / 触发方式按页面隔离，且**锁定会话启动时的页面**。
+    // 用 s.pageKey（而不是当前 tab.url）⇒ follow 模式下页面自己跳走了也不会改去点新页面。
+    const pageEntry = s.pageKey ? await getSelectorForUrl(s.pageKey) : null;
+
     const outcome = await runRefresh(tabId, {
       refreshType: options.refreshType,
       hardRefresh: options.hardRefresh,
       redirection: options.redirection,
-      autoClickSelector: options.autoClickSelector,
-      autoClickAction: options.autoClickAction,
+      autoClickSelector: pageEntry?.selector ?? '',
+      autoClickAction: pageEntry?.action ?? DEFAULT_CLICK_ACTION,
       canonicalUrl: s.canonicalUrl,
       keepActive: options.keepActive,
       ensureKeepActive,
@@ -442,10 +487,17 @@ export default defineBackground(() => {
         await ensureReady();
         const tabId = (msg as PopupCommand & { tabId: number }).tabId;
         const tab = await chrome.tabs.get(tabId).catch(() => null);
+        const s = sessions.get(tabId) ?? null;
+        const currentKey = pageKeyOf(tab?.url);
         const snapshot: StateSnapshot = {
           options,
-          session: sessions.get(tabId) ?? null,
+          session: s,
           tabUrl: tab?.url ?? '',
+          // ADR-022：当前页面的 per-page 配置（没有就 null，不回落）
+          pageSelector: currentKey ? await getSelectorForUrl(currentKey) : null,
+          pageKey: currentKey,
+          // 会话锁定的是启动时那个页面；与当前页面不同时面板要给提示
+          sessionPageKey: s?.pageKey || null,
         };
         sendResponse(snapshot);
       })();
@@ -516,6 +568,21 @@ export default defineBackground(() => {
       })();
       sendResponse({ ok: true });
       return false;
+    }
+    // ── per-page selector（ADR-022）─────────────────────────────
+    if (msg?.type === 'SELECTOR_SET') {
+      void (async () => {
+        const m = msg as PopupCommand & { tabId: number; selector: string };
+        sendResponse(await setSelectorForTab(m.tabId, m.selector));
+      })();
+      return true;
+    }
+    if (msg?.type === 'CLICK_ACTION_SET') {
+      void (async () => {
+        const m = msg as PopupCommand & { tabId: number; action: ClickAction };
+        sendResponse(await setClickActionForTab(m.tabId, m.action));
+      })();
+      return true;
     }
     if (msg?.type === 'OPTIONS_PATCH') {
       void (async () => {

@@ -7,6 +7,7 @@
  * ARP 的 `countdown` / `complete` 两个状态在本扩展合并掉（无倒计时、无"完成"语义）。
  */
 import type { RefreshFailureCode } from './messages';
+import { pageKeyOf } from './page-selectors';
 
 export type SessionStatus = 'start' | 'pause' | 'wait';
 
@@ -19,6 +20,14 @@ export type Session = {
   tabUrl: string;
   /** redirection==='canonical' 时始终回到这个 URL（START 时记录，canonical 模式下不再改写） */
   canonicalUrl: string;
+  /**
+   * ADR-022：**会话锁定**的页面 key（`协议//主机路径`），START 时记录后永不改写。
+   *
+   * XHR 的 selector / 触发方式按页面隔离（`lib/page-selectors.ts`）。一轮刷新该用哪份配置？
+   * 用户已确认：**锁定会话启动时那个页面**。这样即使 follow 模式页面自己跳走了，
+   * 也不会突然改去点新页面上的元素 —— 行为可预测，失败原因也好解释。
+   */
+  pageKey: string;
   /** 已完成刷新轮次 */
   count: number;
   /** 每轮唯一 token：offscreen 的过期 TICK_DONE 用它对不上就丢弃 */
@@ -49,6 +58,8 @@ export function createSession(tabId: number, tabUrl: string, delayMs: number, to
     status: 'start',
     tabUrl,
     canonicalUrl: tabUrl,
+    // ADR-022：会话锁定启动时的页面 key；无法解析的 URL 用空串（取配置时拿不到就是"没配"）
+    pageKey: pageKeyOf(tabUrl) ?? '',
     count: 0,
     timerToken: token,
     armedAt: Date.now(),

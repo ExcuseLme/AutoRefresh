@@ -12,7 +12,11 @@ export type PopupCommand =
   /** 进入元素拾取模式（ADR-018） */
   | { type: 'PICKER_START'; tabId: number }
   /** 取消元素拾取模式 */
-  | { type: 'PICKER_STOP'; tabId: number };
+  | { type: 'PICKER_STOP'; tabId: number }
+  /** 改当前页面的 selector（ADR-022：按 URL 隔离，不写全局） */
+  | { type: 'SELECTOR_SET'; tabId: number; selector: string }
+  /** 改当前页面的触发方式（ADR-022） */
+  | { type: 'CLICK_ACTION_SET'; tabId: number; action: ClickAction };
 
 /** SW → offscreen */
 export type TimerCommand =
@@ -71,6 +75,15 @@ export type StateSnapshot = {
   options: Options;
   session: import('./session').Session | null;
   tabUrl: string;
+  /**
+   * 当前标签页 URL 对应的 per-page 配置（ADR-022）。
+   * 没有就是 null —— 不回落，避免"看起来有配置其实点的是别的页面"。
+   */
+  pageSelector: import('./page-selectors').PageSelectorEntry | null;
+  /** 当前标签页的 pageKey（面板用它判断"是否是同一个页面"，也方便排查） */
+  pageKey: string | null;
+  /** 运行中的会话锁定的 pageKey；与当前页面不同时面板给出提示（ADR-022） */
+  sessionPageKey: string | null;
 };
 
 /** 统一的错误返回，popup 用 t() 翻译 code */

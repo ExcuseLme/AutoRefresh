@@ -2,7 +2,7 @@
 
 ## 1. 全局配置（唯一持久配置，`chrome.storage.local`）
 
-只有一个键：`options`。**不再有** `domain_config` / `site_scopes` / `custom` / `duration` 等 ARP 的多作用域结构。
+有两个键：`options`（全局配置）与 `pageSelectors`（按页面隔离的 XHR selector，ADR-022）。**不再有** `domain_config` / `site_scopes` / `custom` / `duration` 等 ARP 的多作用域结构。
 
 ```ts
 // src/lib/options.ts
@@ -10,7 +10,7 @@ export type IntervalMode = 'fixed' | 'random';          // v2：'custom' 已删�
 export type ClickAction = 'single' | 'double';          // XHR 点击方式（ADR-020）
 
 export type Options = {
-  schemaVersion: 2;            // v1 → v2（ADR-021）
+  schemaVersion: 3;            // v1 → v2（ADR-021）→ v3（ADR-022）
 
   // 间隔
   intervalMode: IntervalMode;
@@ -21,8 +21,7 @@ export type Options = {
 
   // 刷新类型（原「监控」tab 的刷新类型，搬到「间隔」）
   refreshType: 'full' | 'xhr';
-  autoClickSelector: string;   // 仅 refreshType==='xhr' 时使用（Q 已确认保留）
-  autoClickAction: ClickAction;// 单击还是双击，仅 xhr 生效
+  // 注意：XHR 的 autoClickSelector / autoClickAction **不在这里**（ADR-022 起按页面存）
 
   // 通用开关（A1–A7）
   hardRefresh: boolean;        // A1
@@ -45,8 +44,6 @@ export const DEFAULT_OPTIONS: Options = {
   avoidRepeatRandom: true,
 
   refreshType: 'full',
-  autoClickSelector: '',
-  autoClickAction: 'single',
 
   hardRefresh: false,
   keepActive: false,
@@ -72,7 +69,7 @@ export const DEFAULT_OPTIONS: Options = {
   内部只传毫秒。用户明确要求"不要小数, 整数就够用了"，因此 `fixedSeconds` /
   `randomMinSeconds` / `randomMaxSeconds` / `interactionRestartWait` 全部是整数，
   且**拒绝小数输入**（不能用 `Number.parseInt`，它会把 `2.5` 悄悄截成 `2`）。
-- **`autoClickAction` 是纯 UI 选择（ADR-020）**：`'single' | 'double'`，只影响点击时派发几次按下序列，
+- **`autoClickAction` 已按页面隔离（ADR-022）**：`'single' | 'double'`，与 selector 一起存于 `pageSelectors`，只影响点击时派发几次按下序列，
   不改变选择器语义。脏值回落 `'single'`（与其它枚举一致，不拒绝整条 patch）。
 
 ### v1 → v2 迁移（ADR-021 / R20）
@@ -90,6 +87,33 @@ export const DEFAULT_OPTIONS: Options = {
 用户的 `customSeconds` 就丢了 —— 这正是 `migrate()` 里"先迁移再校验"的原因。
 `getOptions()` 在首读时把迁移结果**回写一次**，避免每次读取都重跑、也避免 storage 里长期留旧 schema。
 
+
+### 1.1 `pageSelectors` 键（per-URL，ADR-022）
+
+```ts
+// chrome.storage.local，与 options 并列
+pageSelectors: {
+  [pageKey: string]: {
+    selector: string;      // 该页面的自动点击目标
+    action: 'single' | 'double';  // 触发方式（与 selector 一起按页面存）
+    updatedAt: number;     // LRU 淘汰用
+  }
+}
+
+// pageKey = 协议//主机/路径（忽略 query 与 #hash）
+//   'https://mail.google.com/mail/u/0'     ← #inbox / #sent 共用
+//   'https://mail.163.com/js6/main.jsp'    ← ?sid=xxx 变了仍有效
+//   'https://mail.google.com/mail/u/1'     ← 不同页面，互不影响（不是域名级）
+```
+
+- 与 `options` 分键存的理由：改一个页面的 selector **不触发全局配置广播**，
+  且 `options` 体积不随访问页面数增长。
+- 容量上限 `MAX_PAGES = 300`，超出按 `updatedAt` 淘汰最旧的。
+- `sanitizePageSelectors` 逐条校验：**坏条目丢弃、好条目保留**（不是整份作废）。
+- 无法解析的 URL（`chrome://` / `file://` / 空）→ `pageKeyOf` 返回 `null`，
+  调用方视为"该页面没配置"，**绝不回落到别的页面**（否则又变成共享了）。
+- 运行中的会话用 `Session.pageKey`（START 时记录后**永不改写**）取配置，
+  这样 follow 模式下页面跳走了也不会突然改去点新页面的元素。
 ## 2. 不变式（写入时校验，写入失败不落库）
 
 | 字段 | 规则 | 违反时 |
@@ -99,8 +123,8 @@ export const DEFAULT_OPTIONS: Options = {
 | `randomMaxSeconds` | 整数 `>= randomMinSeconds`；`<= 86400` | 同上（跨字段报 `err_random_range`） |
 | `refreshLimitCount` | 整数 `>= 1` | 同上（`err_limit_count`） |
 | `interactionRestartWait` | 整数 `>= 0`，`<= 3600` | 同上（`err_restart_wait`） |
-| `autoClickSelector` | 仅在 `refreshType==='xhr'` 时校验可用性（运行时无效则跳过点击，不清空值） | 运行时降级 |
-| `autoClickAction` | 只能是 `'single'` / `'double'` | 脏值回落 `'single'`（与其它枚举一致，不拒绝整条 patch） |
+| `autoClickSelector` | **已移出 options**（ADR-022 按页面存于 `pageSelectors`）；运行时无效则跳过点击，不清空值 | 运行时降级 |
+| `autoClickAction` | **已移出 options**（ADR-022）；`sanitizePageSelectors` 里脏值回落 `'single'` | 逐条清洗，不整份作废 |
 
 > 与 ARP 的差异：ARP 会把非法值静默回落到默认（`Kg`：非有限/≤0 ⇒ 12000ms）。
 > 本扩展改为**显式拒绝**，避免"用户以为设了 0.5 秒实际是 12 秒"的错觉。详见 ADR-007。

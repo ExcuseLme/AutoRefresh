@@ -428,6 +428,34 @@ XHR 的 selector 不再只能手输。「选择元素」进入页内拾取模式
 拾取器**不参与刷新链路**：它只是一次性的"生成 selector"工具，停止后完全拆除覆盖层与监听。
 点击链路始终是"一条 selector 直达"，没有运行时兜底匹配（OQ-7 已明确否决指纹方案）。
 
+
+### 7.9 selector 与触发方式按页面隔离（ADR-022）
+
+XHR 的 `autoClickSelector` / `autoClickAction` **不在 `options` 里**，而是存在
+`chrome.storage.local` 的 `pageSelectors` 键，按 `pageKey = 协议//主机/路径` 索引。
+
+`executeRound` 取配置的方式：
+
+```ts
+// Session.pageKey 在 START 时由 pageKeyOf(tabUrl) 记录，之后永不改写
+const pageEntry = s.pageKey ? await getSelectorForUrl(s.pageKey) : null;
+const outcome = await runRefresh(tabId, {
+  autoClickSelector: pageEntry?.selector ?? '',
+  autoClickAction: pageEntry?.action ?? 'single',
+  // …
+});
+```
+
+两个关键点：
+
+1. **锁定会话启动时的页面**（用户已确认）。用 `s.pageKey` 而不是当前 `tab.url`
+   ⇒ follow 模式下页面自己跳走了，也不会突然改去点新页面上的元素。行为可预测。
+2. **没有配置就是 `xhr_no_selector`**（红字 + 不计次数），不会回落到别的页面。
+   回到那个页面点一次「选择元素」即可自愈。
+
+为什么不能继续用全局字段：v2 里它是 `options` 的字段，`applyPickerResult` 直接把
+拾取结果写进去 ⇒ 在 B 页选元素会把 A 页正在跑的会话目标一起改掉（用户实测踩到）。
+
 ## 8. 时序图（完整刷新）
 
 ```

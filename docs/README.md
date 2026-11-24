@@ -16,7 +16,8 @@ docs/
 ├── 07-traceability.md            ← 需求 → 原扩展证据 → 本扩展实现 → 验收用例 映射表
 ├── 08-decisions-and-risks.md     ← ADR 决策记录、开放问题、风险清单
 ├── 09-delivery-plan.md           ← 里程碑、验收标准、测试矩阵、DoD
-├── 10-xhr-picker-and-interval-v2.md ← **设计稿（未实施）**：元素拾取器、单击/双击、间隔单一数据源
+├── 10-xhr-picker-and-interval-v2.md ← 元素拾取器、单击/双击、间隔单一数据源（已实施）
+├── 11-per-page-selector.md       ← XHR selector 按页面隔离、schema v3 迁移（已实施）
 └── assets/reference/             ← 原扩展面板与设置页的参考截图（证据留档）
 ```
 
@@ -82,6 +83,15 @@ Open Questions 的结论（已全部关闭）：
   （语义属性 → 短结构路径 → id → class → 兜底）；**不申请 `debugger` 权限**。
 - `2026-11-24` 测试 80 → **124**（新增 `tests/selector.test.ts`，`dom-click` 重写覆盖双击）。
   构建体积 293 → 304.7 KiB —— **不设体积门槛**（用户明确：自用扩展，不管体积）
+变更记录（第三轮，ADR-022）：
+- **selector 与触发方式改为按页面（URL）隔离**——修掉"在 B 页选元素会把 A 页正在跑的会话目标改掉"的 bug。
+  `pageKey = 协议//主机/路径`（忽略 query 与 #hash；**不是域名级**）。
+- schema v2 → v3：`autoClickSelector` / `autoClickAction` 移出 `options`，
+  改存独立键 `pageSelectors`（容量 300 页 LRU）。旧全局值**不自动写到任何页面**
+  （迁移时猜 URL 会点错元素，比让用户重选一次危险）。
+- 会话用 `Session.pageKey` **锁定启动时那个页面**，follow 模式下页面跳走也不改目标。
+- 面板新增一行 `仅对当前页面生效：<pageKey>`；会话属于别的页面时额外提示。
+- 测试 124 → 154（新增 `tests/page-selectors.test.ts` 26 例，含"写 B 不影响 A"）。
 ## 实现落盘位置（上手速查）
 
 ```

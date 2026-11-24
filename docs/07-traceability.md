@@ -44,6 +44,7 @@
 | C2 | XHR 刷新 | `background.js`：`Fx()` 判 `pmOptions.refresh===Ux.XHR_REFRESH && await G('xhr')`；`Q_()`：`if(await G('xhr') && n.pmOptions.refresh==='2' && n.autoclick) → vh('autoClick',{selector:n.autoclick,hints})`；`Ix()`：`if(await Fx(e) && r.autoclick && t) await Q_(e)`；`Jw()`/`Zw()` 中 `u && !d ? (Jw(e),Q_(e)) : dx(...)` ⇒ **XHR 不 reload**；内容脚本 `G('autoClick', ... Vd(selector) → Tp(element))`；UI `without_full`=`XHR 刷新`，带 premium 皇冠（截图 `monitor-refresh-type.png`） | `05` §7（保留选择器、去掉 premium，用户已确认）；**点击必须是完整 pointer/mouse 序列**（`05` §7.2 / ADR-015，实测 `el.click()` 对 Gmail/网易邮箱 0 生效）；失败轮次不计次数（`05` §7.3 / ADR-016）；面板内置「测试选择器」（`05` §7.4） | T-31 / T-31d / T-31e / T-54 |
 | C2b | 单击 / 双击 | ARP 只有单击（`Tp(el)` 单次 `click`），无双击概念 | `05` §7.7 / ADR-020：`autoClickAction` 决定派发 1 轮还是 2 轮按下序列 + `dblclick` | T-70..T-73 |
 | C2c | 元素拾取器（新增） | ARP 有 `selectorHints`（用户手动 pick 提示）+ premium `cssxSelectors`，其拾取器本身也是自建覆盖层 | `10` §1 / ADR-018 / ADR-019：`lib/picker.ts` + `lib/selector.ts`，**不引入 `debugger` 权限** | T-60..T-69 |
+| C2d | selector 按页面隔离（v3 修正） | ARP 用 `domain_config` 做域名级作用域；本扩展 v2 一度做成纯全局（ADR-002 丢弃多作用域时连域名级也丢了） | `11` / ADR-022：`lib/page-selectors.ts` 按 `协议//主机/路径` 索引，存于独立键 `pageSelectors`；会话用 `Session.pageKey` 锁定启动页面 | T-90..T-95 |
 | C2a | 刷新类型从「监控」tab 搬到「间隔」tab | popup 快照：`监控` tab 下第一张卡片即「刷新类型」（`uid=6_0/6_1/6_3/6_4`）；`间隔` tab 无此控件 | `04` §4.2（位于间隔段落之后、选项之前，**不再有监控 tab**） | T-32 |
 
 ## 5. 丢弃项（逐项对应证据，防止"复活"）
@@ -85,6 +86,7 @@
 | B3 自定义全局同步 | `src/lib/storage.ts`（单 key `options`） | 手工：改自定义值后换标签页仍一致 |
 | B4/B5 随机闭区间 | `src/lib/interval.ts` `nextDelayMs` | `tests/interval.test.ts`（13 例，含边界与去重） |
 | C1/C2/C2a 刷新类型 | `src/components/RefreshTypeSection.tsx`、`refresh.ts`、`content.ts`、`dom-click.ts`、`selector.ts`、`picker.ts` | `check:scope` 无 premium；`tests/dom-click.test.ts`（单击/双击序列）、`tests/selector.test.ts`（5 层降级与唯一性）；手工：Gmail/网易邮箱每轮产生页面自身 XHR；真实站点实测拾取器产出唯一 selector |
+| C2d 按页面隔离的 selector | `src/lib/page-selectors.ts`、`src/lib/session.ts`（`pageKey`）、`src/entrypoints/background.ts`（executeRound / applyPickerResult）、`src/components/RefreshTypeSection.tsx` | `tests/page-selectors.test.ts`（26 例，含「写 B 不影响 A」）；`tests/validate.test.ts`（`migrateV2ToV3`）；手工：A 页开 XHR 会话后去 B 页改 selector，A 的 pageSelector 不变 |
 | 会话恢复（SW 被回收） | `src/lib/session-store.ts`、`background.ts` `ensureReady` | 手工：60s 间隔启动 → 重载扩展 → 会话仍在 `storage.session` |
 
 ## 6. 非功能要求

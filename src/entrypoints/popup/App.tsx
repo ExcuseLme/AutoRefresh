@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
 import { t } from '@/lib/i18n';
 import type { PopupCommand, StateSnapshot } from '@/lib/messages';
-import { DEFAULT_OPTIONS, type Options } from '@/lib/options';
+import { DEFAULT_OPTIONS, type ClickAction, type Options } from '@/lib/options';
+import type { PageSelectorEntry } from '@/lib/page-selectors';
 import type { Session } from '@/lib/session';
 import { watchOptions } from '@/lib/storage';
 import { Header } from '@/components/Header';
@@ -23,6 +24,19 @@ export default function App() {
   const [tabId, setTabId] = useState<number | null>(null);
   const [tabUrl, setTabUrl] = useState('');
   const [ready, setReady] = useState(false);
+  // ADR-022：当前页面的 per-page 配置
+  const [pageSelector, setPageSelector] = useState<PageSelectorEntry | null>(null);
+  const [pageKey, setPageKey] = useState<string | null>(null);
+  const [sessionPageKey, setSessionPageKey] = useState<string | null>(null);
+
+  /** 把一次快照灌进本地状态（首屏与轮询共用同一份逻辑） */
+  const applySnapshot = (snap: StateSnapshot): void => {
+    setSession(snap.session);
+    setTabUrl(snap.tabUrl);
+    setPageSelector(snap.pageSelector);
+    setPageKey(snap.pageKey);
+    setSessionPageKey(snap.sessionPageKey);
+  };
 
   // 首屏拉一次状态
   useEffect(() => {
@@ -37,8 +51,7 @@ export default function App() {
       const snap = await send<StateSnapshot>({ type: 'GET_STATE', tabId: id });
       if (snap) {
         setOptions(snap.options);
-        setSession(snap.session);
-        setTabUrl(snap.tabUrl);
+        applySnapshot(snap);
       }
       setReady(true);
     })();
@@ -54,10 +67,7 @@ export default function App() {
     const tick = async () => {
       if (cancelled) return;
       const snap = await send<StateSnapshot>({ type: 'GET_STATE', tabId });
-      if (!cancelled && snap) {
-        setSession(snap.session);
-        setTabUrl(snap.tabUrl);
-      }
+      if (!cancelled && snap) applySnapshot(snap);
     };
     const timer = setInterval(() => void tick(), 500);
     return () => {
@@ -65,6 +75,32 @@ export default function App() {
       clearInterval(timer);
     };
   }, [tabId]);
+
+  /**
+   * 写当前页面的 selector / 触发方式（ADR-022）。
+   *
+   * 注意这里**不走 OPTIONS_PATCH**：per-page 配置存在独立的 `pageSelectors` 键，
+   * 由 SW 的 SELECTOR_SET / CLICK_ACTION_SET 写。
+   */
+  const setSelector = useMemo(
+    () =>
+      async (selector: string): Promise<{ ok: boolean; code?: string }> => {
+        if (tabId === null) return { ok: false, code: 'err_page_unavailable' };
+        const res = await send<{ ok: boolean; code?: string }>({ type: 'SELECTOR_SET', tabId, selector });
+        return res ?? { ok: false, code: 'err_page_unavailable' };
+      },
+    [tabId],
+  );
+
+  const setAction = useMemo(
+    () =>
+      async (action: ClickAction): Promise<{ ok: boolean; code?: string }> => {
+        if (tabId === null) return { ok: false, code: 'err_page_unavailable' };
+        const res = await send<{ ok: boolean; code?: string }>({ type: 'CLICK_ACTION_SET', tabId, action });
+        return res ?? { ok: false, code: 'err_page_unavailable' };
+      },
+    [tabId],
+  );
 
   const patch = useMemo(
     () =>
@@ -155,7 +191,17 @@ export default function App() {
         ) : (
           <>
             <IntervalSection options={options} patch={patch} />
-            <RefreshTypeSection options={options} patch={patch} probe={probe} pick={pick} />
+            <RefreshTypeSection
+              options={options}
+              patch={patch}
+              probe={probe}
+              pick={pick}
+              pageSelector={pageSelector}
+              sessionPageKey={sessionPageKey}
+              pageKey={pageKey}
+              setSelector={setSelector}
+              setAction={setAction}
+            />
             <OptionsSection options={options} patch={patch} />
           </>
         )}

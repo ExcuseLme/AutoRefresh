@@ -5,13 +5,15 @@
  * - 只有一份全局配置，没有 domain_config / site_scopes（ADR-002）
  * - 时间一律「整数秒」，不接受小数（OQ-5 已确认）
  * - 间隔只有「固定 / 随机」两档，固定档只有一个 `fixedSeconds` 数据源（ADR-021）
+ * - XHR 的 selector 与单击/双击**不在这里**：它们按页面（URL）隔离，
+ *   存在独立的 `pageSelectors` 键里（ADR-022 / `lib/page-selectors.ts`）
  */
 
 export type IntervalMode = 'fixed' | 'random';
 export type RefreshType = 'full' | 'xhr';
 export type InteractionAction = 'stop' | 'pause' | 'restart';
 export type Redirection = 'follow' | 'canonical';
-/** XHR 模式点一下还是点两下（ADR-020） */
+/** XHR 模式点一下还是点两下（ADR-020）。按页面存，见 page-selectors.ts */
 export type ClickAction = 'single' | 'double';
 
 /** 固定档的快捷数字（点击即"上屏"，不参与持久化语义，见 ADR-021） */
@@ -20,7 +22,7 @@ export const FIXED_PRESETS = [3, 5, 10, 60] as const;
 export const MIN_INTERVAL_SECONDS = 1;
 export const MAX_INTERVAL_SECONDS = 86400;
 
-export const SCHEMA_VERSION = 2;
+export const SCHEMA_VERSION = 3;
 
 export type Options = {
   schemaVersion: typeof SCHEMA_VERSION;
@@ -36,10 +38,6 @@ export type Options = {
 
   // ── 刷新类型（原 ARP「监控」tab，搬到「间隔」）
   refreshType: RefreshType;
-  /** ADR-009：XHR 模式通过点击该选择器触发页面自身的请求 */
-  autoClickSelector: string;
-  /** ADR-020：对该元素单击还是双击 */
-  autoClickAction: ClickAction;
 
   // ── 常规开关
   hardRefresh: boolean;
@@ -64,8 +62,6 @@ export const DEFAULT_OPTIONS: Options = {
   avoidRepeatRandom: true,
 
   refreshType: 'full',
-  autoClickSelector: '',
-  autoClickAction: 'single',
 
   hardRefresh: false,
   keepActive: false,
@@ -77,3 +73,6 @@ export const DEFAULT_OPTIONS: Options = {
   ignoreInputField: true,
   redirection: 'follow',
 };
+
+/** 某个页面第一次配置触发方式时的默认值 */
+export const DEFAULT_CLICK_ACTION: ClickAction = 'single';
