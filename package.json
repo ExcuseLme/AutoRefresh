@@ -1,0 +1,37 @@
+{
+  "name": "auto-refresh",
+  "description": "AutoRefresh — 全局作用域的页面自动刷新扩展",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "wxt",
+    "dev:firefox": "wxt -b firefox",
+    "build": "wxt build",
+    "zip": "wxt zip",
+    "compile": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "check:scope": "node scripts/check-scope.mjs",
+    "verify": "pnpm compile && pnpm test && pnpm build && pnpm check:scope",
+    "postinstall": "wxt prepare"
+  },
+  "dependencies": {
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.3.5",
+    "@types/chrome": "^0.3.7",
+    "@types/node": "^26.6.6",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@vitejs/plugin-react": "^6.3.0",
+    "@wxt-dev/module-react": "^1.2.2",
+    "tailwindcss": "^4.3.5",
+    "typescript": "^5.9.3",
+    "vite": "^8.3.8",
+    "vitest": "^5.1.1",
+    "wxt": "^0.21.5"
+  }
+}

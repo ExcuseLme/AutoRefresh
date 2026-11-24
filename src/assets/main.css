@@ -1,0 +1,123 @@
+@import 'tailwindcss';
+
+/*
+ * 视觉 token 提取自 ARP 的 assets/popup-DcUX7WOF.css（见 docs/04-ui-panel.md §6）
+ */
+@theme {
+  --font-sans: 'Inter', 'PingFang SC', 'Microsoft YaHei', system-ui, sans-serif;
+  --font-mono: 'JetBrains Mono', 'SFMono-Regular', Consolas, monospace;
+  --radius-card: 0.75rem;
+  --radius-box: 0.625rem;
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(97% 0 0);
+  --foreground: oklch(15% 0 0);
+  --card: oklch(100% 0 0);
+  --card-foreground: oklch(15% 0 0);
+  --primary: oklch(62% 0.17 155);
+  --primary-foreground: oklch(100% 0 0);
+  --primary-hover: oklch(63.96% 0.13637 162.618);
+  --secondary: oklch(94% 0 0);
+  --secondary-foreground: oklch(25% 0 0);
+  --muted: oklch(94% 0 0);
+  --muted-foreground: oklch(50% 0 0);
+  --accent: oklch(95.05% 0.0507 163.05);
+  --accent-border: oklch(90.44% 0.0902 164.42);
+  --accent-foreground: oklch(45% 0.13 162);
+  --destructive: oklch(55% 0.22 27);
+  --border: oklch(88% 0 0);
+  --input: oklch(94% 0 0);
+  --ring: oklch(62% 0.17 155);
+
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --background: oklch(15.5% 0.004 240);
+    --foreground: oklch(91% 0.004 240);
+    --card: oklch(19.5% 0.004 240);
+    --card-foreground: oklch(91% 0.004 240);
+    --primary: oklch(64% 0.16 155);
+    --primary-foreground: oklch(100% 0 0);
+    --secondary: oklch(24% 0.004 240);
+    --secondary-foreground: oklch(82% 0.004 240);
+    --muted: oklch(24% 0.004 240);
+    --muted-foreground: oklch(62% 0.004 240);
+    --accent: oklch(28% 0.05 160);
+    --accent-border: oklch(38% 0.08 160);
+    --accent-foreground: oklch(80% 0.12 160);
+    --destructive: oklch(58% 0.18 25);
+    --border: oklch(30% 0.004 240);
+    --input: oklch(22% 0.004 240);
+    --ring: oklch(64% 0.16 155);
+
+    color-scheme: dark;
+  }
+}
+
+@layer base {
+  *,
+  ::before,
+  ::after {
+    box-sizing: border-box;
+  }
+
+  html,
+  body {
+    margin: 0;
+    padding: 0;
+  }
+
+  /* ARP 同款：面板最小宽度 480px（docs/04 §7） */
+  body,
+  #root {
+    min-width: 480px;
+    background-color: var(--background);
+    color: var(--foreground);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+    border: none;
+    background: none;
+    color: inherit;
+  }
+
+  input,
+  select {
+    font-family: inherit;
+    color: inherit;
+  }
+
+  /* 数字一律等宽，避免倒计时/间隔数字抖动（docs/04 §6） */
+  .tnum {
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 去掉 number input 原生 spinner，改用自绘 −/+ 按钮（docs/04 §4.1） */
+  .no-spinner::-webkit-outer-spin-button,
+  .no-spinner::-webkit-inner-spin-button {
+    appearance: none;
+    margin: 0;
+  }
+
+  .no-spinner {
+    appearance: textfield;
+    -moz-appearance: textfield;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  ::before,
+  ::after {
+    transition-duration: 0.01ms !important;
+    animation-duration: 0.01ms !important;
+  }
+}
