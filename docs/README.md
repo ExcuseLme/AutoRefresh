@@ -16,6 +16,7 @@ docs/
 ├── 07-traceability.md            ← 需求 → 原扩展证据 → 本扩展实现 → 验收用例 映射表
 ├── 08-decisions-and-risks.md     ← ADR 决策记录、开放问题、风险清单
 ├── 09-delivery-plan.md           ← 里程碑、验收标准、测试矩阵、DoD
+├── 10-xhr-picker-and-interval-v2.md ← **设计稿（未实施）**：元素拾取器、单击/双击、间隔单一数据源
 └── assets/reference/             ← 原扩展面板与设置页的参考截图（证据留档）
 ```
 
@@ -55,6 +56,19 @@ Open Questions 的结论（已全部关闭）：
 | OQ-4 | **显示**徽章：运行中绿点、暂停黄点、停止清空 |
 | OQ-5 | **只要整数**（用户明确要求）：所有间隔输入为 ≥1 的整数秒，上限 86400，拒绝小数 |
 | OQ-6 | 面板滚动位置**不做**持久化 |
+| OQ-7 | **待定**（设计稿 `10` §1.7）：选择器是否增加「指纹兜底」（`selectorHints`）以救回无稳定 CSS 抓手的页面（如网易邮箱刷新按钮）。默认建议本期先只存 selector |
+
+## 设计稿（未实施）
+
+`10-xhr-picker-and-interval-v2.md` 是 2026-11-24 第二轮需求的设计方案，**代码尚未改动**。
+它包含：
+
+- §0 上一轮「点击」改成了什么（完整 pointer/mouse 序列，含实测对照表）
+- §1 元素拾取器：为什么不用 `chrome.debugger`（ADR-018）、消息流、popup 关闭的三层兜底、
+  5 层选择器生成算法（ADR-019）
+- §2 单击/双击（ADR-020）
+- §3 间隔改版：单一数据源 + schema v2 迁移（ADR-021）
+- §4 影响面清单、§5 验收用例（T-60…T-89）、§6 新增风险 R13–R20
 
 ## 实现落盘位置（上手速查）
 
@@ -66,7 +80,8 @@ src/
 │   ├── offscreen/          HTML 入口：唯一的 setTimeout 宿主（ADR-004）
 │   └── popup/              React 面板（main.tsx + App.tsx）
 ├── components/             Header / IntervalSection / RefreshTypeSection / OptionsSection / ui
-├── lib/                    options / validate / interval / url / session / storage / refresh / …
+├── lib/                    options / validate / interval / url / session / storage / refresh /
+│                           dom-click（完整点击序列）/ keep-active / messages / i18n / number-input …
 └── assets/main.css         Tailwind + ARP 提取的 oklch 视觉 token
 
 public/
