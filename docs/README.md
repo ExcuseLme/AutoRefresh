@@ -106,7 +106,41 @@ tests/                     vitest 单测（间隔算法、校验、URL/上限、
 
 验证入口：`pnpm verify`（= `compile` + `test` + `build` + `check:scope`）。
 
-本地试用：`pnpm build` 后把 `.output/chrome-mv3/` 目录作为 `load unpacked` 加载。
+## 如何加载到 Chrome（重要：源码目录不能直接加载）
+
+本项目用 **WXT + Vite** 构建，**源码目录里没有 `manifest.json`**
+（manifest 由 `wxt.config.ts` 在构建时生成），所以
+「加载已解压的扩展程序」选 `D:\data\code\co-built\AutoRefresh` 会**直接失败**。
+这不是配置问题，是 MV3 扩展的加载机制决定的。
+
+| 你想做什么 | 加载哪个目录 | 命令 |
+| --- | --- | --- |
+| **日常使用 / 验收**（推荐） | `.output\chrome-mv3` | `pnpm build` |
+| **改代码后想自动重载** | `.output\chrome-mv3-dev` | `pnpm dev`（需保持终端运行） |
+
+两点要注意：
+
+1. **`pnpm dev` 的产物不是自包含的**。`chrome-mv3-dev/popup.html` 里有
+   `http://localhost:3000/@vite/client` 这类引用，靠运行中的 dev server 提供代码与 HMR。
+   所以它**只在 `pnpm dev` 跑着的时候能用**，关掉终端面板就白屏。
+2. **不同目录 = 不同的扩展 ID = 两份独立配置**。manifest 里没有 `key` 字段时，
+   Chrome 用**目录的绝对路径**派生扩展 ID。在当前环境实测：
+   `.output\chrome-mv3` 与 `.output\chrome-mv3-dev` 会得到**两个不同的扩展**，
+   各自有独立的 `chrome.storage.local` —— 你在一个里配的间隔，另一个看不到。
+   想要"一套配置"，就固定从同一个目录加载。
+
+推荐的日常流程：
+
+```bash
+pnpm build                          # 生成 .output/chrome-mv3
+# chrome://extensions → 开发者模式 → 加载已解压 → 选 .output\chrome-mv3
+# 之后每次改完代码，pnpm build 完点该扩展卡片上的「重新加载」即可（配置不丢）
+```
+
+> 顺带一个已知的坑：**扩展更新前就已打开的标签页不会自动注入 content script**
+> （浏览器行为）。本扩展已用 `scripting.executeScript` 按需补注入兜底（ADR-014），
+> 所以不需要手动刷新页面。但**重载扩展本身会让正在运行的会话停掉**，重启即可。
+
 
 
 ## 阅读顺序（给实现者）
