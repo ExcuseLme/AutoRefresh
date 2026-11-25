@@ -83,6 +83,17 @@ Open Questions 的结论（已全部关闭）：
   （语义属性 → 短结构路径 → id → class → 兜底）；**不申请 `debugger` 权限**。
 - `2026-11-24` 测试 80 → **124**（新增 `tests/selector.test.ts`，`dom-click` 重写覆盖双击）。
   构建体积 293 → 304.7 KiB —— **不设体积门槛**（用户明确：自用扩展，不管体积）
+变更记录（第十轮，ADR-029）：扩展版本号 v0.1.0 → **v0.2.0**
+- **版本号单一真源 = `package.json`**：删掉 `wxt.config.ts` 里硬写的 `version`，
+  WXT 自动从 package.json 读取写入 manifest（已验证改一处即产物同步）。
+- **面板头部显示版本号**：`页面自动刷新  v0.2.0`，读的是
+  `chrome.runtime.getManifest().version` —— 即**浏览器里实际加载的那个版本**。
+  重载后数字变了 = 新构建生效；没变 = 还在跑旧产物。这正是你要的"观察是否重载成功"。
+- **`docs/09` 里程碑检查项新增一条**：`package.json` 的 `version` 已递增。
+- **约定**：以后每次改动都递增版本号（功能增量 minor、纯修复 patch）。
+- 新增 `tests/version.test.ts`（4 例）锁住三条不变式：
+  合法 semver / 已从 0.1.0 递增过 / `wxt.config.ts` 不能再硬写 version /
+  源码里不能出现当前版本号字面量（必须走 getManifest）。
 变更记录（第九轮，ADR-028）：
 - **触发范围从"两个开关"改成"三段 SegmentedControl"**：`[任何交互][仅框外][仅框内]`。
   原因：2 个布尔 = 4 种组合但只有 3 种合法，`{inputOnly:true, ignoreInput:true}` 是非法态；

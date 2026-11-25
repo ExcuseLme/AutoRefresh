@@ -3,6 +3,7 @@ import { t } from '@/lib/i18n';
 import type { Options } from '@/lib/options';
 import type { Session } from '@/lib/session';
 import { summarize } from '@/lib/session-machine';
+import { getExtensionVersion } from '@/lib/version';
 
 type Control = {
   start: () => Promise<string | null>;
@@ -91,7 +92,13 @@ export function Header({
           <RefreshIcon />
         </span>
         <div className="min-w-0 flex-1 leading-tight">
-          <p className="truncate text-[12.5px] font-semibold text-[var(--foreground)]">{t('app_name')}</p>
+          <p className="flex items-baseline gap-1.5 text-[12.5px] font-semibold text-[var(--foreground)]">
+            <span className="truncate">{t('app_name')}</span>
+            {/* ADR-029：显示运行中扩展的 manifest 版本，用来判断是否重载成功 */}
+            <span className="shrink-0 font-mono text-[9.5px] font-normal text-[var(--muted-foreground)]">
+              v{getExtensionVersion()}
+            </span>
+          </p>
           <p className="truncate text-[10.5px] text-[var(--muted-foreground)]">{statusLine(session, options)}</p>
         </div>
 

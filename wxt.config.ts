@@ -9,7 +9,8 @@ export default defineConfig({
     name: '__MSG_app_name__',
     description: '__MSG_app_description__',
     default_locale: 'zh_CN',
-    version: '0.1.0',
+    // 版本号**只在这里之外维护**：单一真源是 package.json，WXT 自动读取。
+    // 不要在此硬写 version —— 两处各写一份必然漂移（ADR-029）。
     icons: {
       16: 'icon/16.png',
       32: 'icon/32.png',
