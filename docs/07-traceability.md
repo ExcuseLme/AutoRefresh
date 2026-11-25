@@ -30,7 +30,7 @@
 
 | # | 用户要求 | ARP 证据 | 本扩展落点 | 用例 |
 | --- | --- | --- | --- | --- |
-| B1 | 固定档改 3/5/10/60 秒 | `chunks/popup-BcW0V7JR.js` `a5` 数组：`{id:'5000',amount:'5'}`、`'10000'/10`、`'15000'/15`、`{id:'custom-60',amount:'60',customSeconds:60}`、`'300000'/5(分)`、`'600000'/10`、`'900000'/15`；值映射 `Fde={'stand-5000':5e3,...}`；schema `time_type` 允许 `stand-5000|10000|15000|300000|600000|900000|custom|timer|rand` | `03` `fixedSeconds` **单一数据源**（ADR-021 起删 `fixedPreset`/`customSeconds`，预设只作 UI 快捷数字）；`04` §4.1 | T-20 / T-81..T-88 |
+| B1 | 固定档改 3/6/10/60 秒 | `chunks/popup-BcW0V7JR.js` `a5` 数组：`{id:'5000',amount:'5'}`、`'10000'/10`、`'15000'/15`、`{id:'custom-60',amount:'60',customSeconds:60}`、`'300000'/5(分)`、`'600000'/10`、`'900000'/15`；值映射 `Fde={'stand-5000':5e3,...}`；schema `time_type` 允许 `stand-5000|10000|15000|300000|600000|900000|custom|timer|rand` | `03` `fixedSeconds` **单一数据源**（ADR-021 起删 `fixedPreset`/`customSeconds`，预设只作 UI 快捷数字）；`04` §4.1 | T-20 / T-81..T-88 |
 | B2 | 自定义可输入 >0 任意值 | 固定档内自定义 chip：`{id:'custom-60',customSeconds:60}` + `onCustomIntervalChange` ⇒ `{time_type:'custom', custom_interval:e}`；`qg()` 中 `if(n==='custom') return Kg(e.custom_interval*1e3)`，`Kg`：`>0` 否则回落 12000 | `03` 固定档唯一 `fixedSeconds`（ADR-021）；`05` §2 `clampSeconds`；ADR-007 改为**拒绝非法** | T-21 / T-82..T-87 |
 | B3 | 自定义值全局同步 | ARP 反证：`custom_interval` 属域级 schema（`cl`/`Pd` 均含 `custom_interval` 且存在 `domains`/`global` 双层），并且用 `localStorage.time_type` 记"上次模式"（`zde()` 中 `localStorage.getItem('time_type') || 'stand-5000'`）—— 值仍按作用域分存 | `03` §1 `customSeconds` 单字段；`01` §E-2 | T-22 |
 | B4 | 随机间隔 min/max 闭区间，每轮重取 | `background.js` `qg()`：`r=Number.isInteger(t); i = r ? n-t+1 : n-t; a = Math.random()*i+t; return Kg(r? Math.floor(a)*1e3 : Math.floor(a*1e3))`；`$_()` 提供"避免与上一轮相同"，重试上限 10；默认 `randomMin:5, randomMax:30`（`_l.randomMin/randomMax`） | `05` §2 `nextDelayMs`；`03` `avoidRepeatRandom` | T-23 |
@@ -81,7 +81,7 @@
 | A4/A7 交互行为 | `src/lib/interaction.ts`、`background.ts` `onInteraction` | `tests/session-and-interaction.test.ts`；手工：stop/pause/restart 三态 + wait 恢复 |
 | A5 重定向行为 | `src/lib/url.ts` `pickTargetUrl`、`refresh.ts` | `tests/url-and-limits.test.ts`；手工：302 场景下 follow 继续 `/target`、canonical 拉回 `/anchor` |
 | A6 忽略输入框 | `src/lib/interaction.ts` | `tests/session-and-interaction.test.ts`；手工：`ignoreInputField` true/false 各点一次输入框 |
-| B1 固定档 3/5/10/60 | `src/lib/options.ts` `FIXED_PRESETS` | `tests/url-and-limits.test.ts`（默认值断言） |
+| B1 固定档 3/6/10/60 | `src/lib/options.ts` `FIXED_PRESETS` | `tests/url-and-limits.test.ts`（默认值断言） |
 | B2 固定档可输任意整数秒 | `src/lib/number-input.ts`、`options.ts` `fixedSeconds` | `tests/number-input.test.ts`、`tests/interval.test.ts`、`tests/validate.test.ts`（`migrateV1ToV2` 保值） |
 | B3 自定义全局同步 | `src/lib/storage.ts`（单 key `options`） | 手工：改自定义值后换标签页仍一致 |
 | B4/B5 随机闭区间 | `src/lib/interval.ts` `nextDelayMs` | `tests/interval.test.ts`（13 例，含边界与去重） |

@@ -65,7 +65,7 @@ describe('reachedLimit（T-12，ADR-010 用 >= 而非 ARP 的 >）', () => {
 describe('DEFAULT_OPTIONS 与需求对齐（B1）', () => {
   it('固定档默认 10 秒且在预设集合内', () => {
     expect(DEFAULT_OPTIONS.fixedSeconds).toBe(10);
-    expect([3, 5, 10, 60]).toContain(DEFAULT_OPTIONS.fixedSeconds);
+    expect([3, 6, 10, 60]).toContain(DEFAULT_OPTIONS.fixedSeconds);
   });
 
   it('schema 是 v3；不再有 custom 相关字段（ADR-021），也没有全局 selector 字段（ADR-022）', () => {

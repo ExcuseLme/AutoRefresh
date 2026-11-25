@@ -226,7 +226,7 @@ describe('migrateV2ToV3（ADR-022：全局 selector 移出 options）', () => {
 
 describe('FIXED_PRESETS 仍保留为 UI 快捷数字（ADR-021）', () => {
   it('4 个预设都存在且升序', () => {
-    expect(FIXED_PRESETS).toEqual([3, 5, 10, 60]);
+    expect(FIXED_PRESETS).toEqual([3, 6, 10, 60]);
     expect([...FIXED_PRESETS].sort((a, b) => a - b)).toEqual([...FIXED_PRESETS]);
   });
 

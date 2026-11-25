@@ -17,7 +17,7 @@ export type Redirection = 'follow' | 'canonical';
 export type ClickAction = 'single' | 'double';
 
 /** 固定档的快捷数字（点击即"上屏"，不参与持久化语义，见 ADR-021） */
-export const FIXED_PRESETS = [3, 5, 10, 60] as const;
+export const FIXED_PRESETS = [3, 6, 10, 60] as const;
 
 export const MIN_INTERVAL_SECONDS = 1;
 export const MAX_INTERVAL_SECONDS = 86400;

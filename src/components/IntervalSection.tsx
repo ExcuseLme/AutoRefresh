@@ -51,10 +51,10 @@ export function IntervalSection({ options, patch }: { options: Options; patch: P
       />
 
       {options.intervalMode === 'fixed' ? (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)]">
-          {/* 第一行：− 数字 + 秒 ｜右侧摘要；stepper 限宽，避免 −/+ 被撑到卡片两端 */}
-          <div className="flex items-center gap-2 px-2.5 py-1.5">
-            <div className="w-[168px] shrink-0">
+        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5">
+          {/* 一行放下：− 数字 + 秒 ｜快捷 chip（右侧原本空白，正好容下 4 个 chip） */}
+          <div className="flex items-center gap-1.5">
+            <div className="w-[128px] shrink-0">
               <NumberStepper
                 value={options.fixedSeconds}
                 min={MIN_INTERVAL_SECONDS}
@@ -69,21 +69,17 @@ export function IntervalSection({ options, patch }: { options: Options; patch: P
             <span className="shrink-0 text-[10.5px] text-[var(--muted-foreground)]">
               {t('interval_seconds_label')}
             </span>
-            <span className="ml-auto min-w-0 truncate text-[10.5px] text-[var(--muted-foreground)]">
-              {t('interval_every_seconds', [options.fixedSeconds])}
-            </span>
-          </div>
-          {/* 第二行：快捷 chip */}
-          <div className="flex items-center gap-1 border-t border-[var(--border)] px-2.5 py-1.5">
-            {FIXED_PRESETS.map((preset) => (
-              <Chip
-                key={preset}
-                active={options.fixedSeconds === preset}
-                onClick={() => void applyFixed(preset)}
-              >
-                {t('interval_preset_seconds', [preset])}
-              </Chip>
-            ))}
+            <div className="ml-auto flex shrink-0 items-center gap-1">
+              {FIXED_PRESETS.map((preset) => (
+                <Chip
+                  key={preset}
+                  active={options.fixedSeconds === preset}
+                  onClick={() => void applyFixed(preset)}
+                >
+                  {t('interval_preset_seconds', [preset])}
+                </Chip>
+              ))}
+            </div>
           </div>
         </div>
       ) : null}

@@ -92,9 +92,6 @@
   "interval_decrease_by": {
     "message": "减少 1"
   },
-  "interval_every_seconds": {
-    "message": "每 $1 秒刷新"
-  },
   "interval_fixed": {
     "message": "固定"
   },
