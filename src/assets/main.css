@@ -71,10 +71,10 @@
     padding: 0;
   }
 
-  /* ARP 同款：面板最小宽度 480px（docs/04 §7） */
+  /* ADR-023：面板宽度从 ARP 的 480px 收到 400px，配合紧凑布局 */
   body,
   #root {
-    min-width: 480px;
+    min-width: 400px;
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);

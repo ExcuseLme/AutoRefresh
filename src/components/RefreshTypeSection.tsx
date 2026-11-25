@@ -25,12 +25,11 @@ type ProbeState =
   | { kind: 'fail'; message: string };
 
 /**
- * 刷新类型段落 + XHR 的「自动点击元素选择器」。
+ * 刷新类型 + XHR 的「自动点击元素选择器」（紧凑版）。ADR-018/020/022/023
  *
- * ADR-022：selector 与触发方式**按页面（URL）隔离**，不再是全局字段。
- * 面板读写的是"当前标签页这个 URL"的记录，所以：
- *   - 在 A 页配好并跑起来，去 B 页改配置不会影响 A 页正在跑的会话
- *   - 运行中的会话锁定的是它启动时那个页面的配置
+ * ADR-022：selector 与触发方式按页面（URL）隔离。面板读写"当前标签页这个 URL"的记录。
+ * 紧凑化手段：说明文字并入标题行右侧、选择器输入框与两个按钮同一行、
+ * 「触发方式」与说明同一行，不再各占一整行。
  */
 export function RefreshTypeSection({
   options,
@@ -46,17 +45,11 @@ export function RefreshTypeSection({
   options: Options;
   patch: PatchFn;
   probe: (selector: string) => Promise<ProbeState>;
-  /** 进入元素拾取模式（ADR-018）；面板会在用户去页面点选时被关闭 */
   pick: () => Promise<{ ok: boolean; message?: string }>;
-  /** 当前页面的 per-page 配置（没有就是 null） */
   pageSelector: PageSelectorEntry | null;
-  /** 运行中会话锁定的 pageKey（没有会话就是 null） */
   sessionPageKey: string | null;
-  /** 当前页面的 pageKey */
   pageKey: string | null;
-  /** 写当前页面的 selector（ADR-022） */
   setSelector: (selector: string) => Promise<{ ok: boolean; code?: string }>;
-  /** 写当前页面的触发方式（ADR-022） */
   setAction: (action: ClickAction) => Promise<{ ok: boolean; code?: string }>;
 }) {
   const current = TYPE_ITEMS.find((i) => i.value === options.refreshType) ?? TYPE_ITEMS[0]!;
@@ -65,8 +58,6 @@ export function RefreshTypeSection({
 
   const selector = pageSelector?.selector ?? '';
   const action: ClickAction = pageSelector?.action ?? 'single';
-
-  /** 会话在其他页面跑着：面板改的配置不会影响那个会话，必须告诉用户 */
   const sessionElsewhere = sessionPageKey !== null && pageKey !== null && sessionPageKey !== pageKey;
 
   const onTest = async () => {
@@ -82,93 +73,79 @@ export function RefreshTypeSection({
     if (!res.ok && res.message) setProbeState({ kind: 'fail', message: res.message });
   };
 
-  const onSelectorInput = async (value: string) => {
-    setProbeState({ kind: 'idle' });
-    await setSelector(value);
-  };
-
-  const onActionChange = async (next: ClickAction) => {
-    // 还没选过元素时就只是"预选"，不建空壳记录（拾取时会一并写入）
-    await setAction(next);
-  };
-
   return (
-    <section className="flex flex-col gap-2.5">
-      <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-4">
-        <p className="mb-2.5 text-xs text-[var(--muted-foreground)]">{t('refresh_type')}</p>
+    <section className="flex flex-col gap-1.5">
+      <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5">
+        {/* 标题 + 说明同一行，省掉一整段说明占位 */}
+        <div className="mb-1 flex items-baseline gap-2">
+          <p className="shrink-0 text-[10.5px] font-medium text-[var(--muted-foreground)]">{t('refresh_type')}</p>
+          <p className="min-w-0 truncate text-[10.5px] text-[var(--muted-foreground)]/80">{t(current.descKey)}</p>
+        </div>
         <SegmentedControl
           value={options.refreshType}
           ariaLabel={t('refresh_type')}
           items={TYPE_ITEMS.map((i) => ({ value: i.value, label: t(i.labelKey) }))}
           onChange={(v) => void patch({ refreshType: v as RefreshType })}
         />
-        <p className="mt-2 text-[11px] leading-relaxed text-[var(--muted-foreground)]">{t(current.descKey)}</p>
 
         {options.refreshType === 'xhr' ? (
           <>
-            <div className="mt-3 border-t border-[var(--border)] pt-3">
-              <div className="mb-1.5 flex items-center justify-between gap-2">
-                <p className="text-xs text-[var(--muted-foreground)]">{t('refresh_xhr_selector')}</p>
-                <div className="flex items-center gap-1.5">
-                  <button
-                    type="button"
-                    onClick={() => void onPick()}
-                    disabled={picking}
-                    className="rounded-md border border-[var(--border)] px-2 py-0.5 text-[11px] font-medium text-[var(--muted-foreground)] transition hover:border-[var(--primary)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {picking ? t('pick_element_active') : t('pick_element')}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => void onTest()}
-                    disabled={probeState.kind === 'testing' || selector.trim() === ''}
-                    className="rounded-md border border-[var(--border)] px-2 py-0.5 text-[11px] font-medium text-[var(--muted-foreground)] transition hover:border-[var(--primary)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {probeState.kind === 'testing' ? t('status_loading') : t('selector_test')}
-                  </button>
-                </div>
+            <div className="mt-1.5 flex flex-col gap-1 border-t border-[var(--border)] pt-1.5">
+              {/* 标签 + 两个按钮同一行 */}
+              <div className="flex items-center gap-1.5">
+                <p className="min-w-0 flex-1 truncate text-[10.5px] text-[var(--muted-foreground)]">
+                  {t('refresh_xhr_selector')}
+                </p>
+                <SmallButton onClick={() => void onPick()} disabled={picking}>
+                  {picking ? t('pick_element_active') : t('pick_element')}
+                </SmallButton>
+                <SmallButton onClick={() => void onTest()} disabled={probeState.kind === 'testing' || selector.trim() === ''}>
+                  {probeState.kind === 'testing' ? t('status_loading') : t('selector_test')}
+                </SmallButton>
               </div>
+
               <input
                 type="text"
                 name="autoClickSelector"
                 autoComplete="off"
-                className="w-full rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-3 py-2 font-mono text-xs text-[var(--foreground)] outline-none transition focus:border-[var(--primary)]"
+                className="w-full rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 font-mono text-[11px] text-[var(--foreground)] outline-none transition focus:border-[var(--primary)]"
                 placeholder={t('refresh_xhr_selector_placeholder')}
                 aria-label={t('refresh_xhr_selector')}
                 value={selector}
-                onChange={(e) => void onSelectorInput(e.currentTarget.value)}
+                onChange={(e) => void setSelector(e.currentTarget.value)}
               />
-              {/* 按页面隔离的说明 + 没有配置时的引导 */}
-              <p className="mt-1.5 text-[11px] leading-tight text-[var(--muted-foreground)]">
-                {pageKey ? t('selector_scope_hint', [pageKey]) : t('selector_scope_unavailable')}
-              </p>
-              {probeState.kind === 'ok' ? (
-                <p className="mt-1.5 text-[11px] leading-tight text-[var(--primary)]">
-                  {t('selector_test_ok', [probeState.count])}
-                  <span className="font-mono">{probeState.preview}</span>
+
+              {/* 所有辅助信息压成一行小字：页面隔离提示 / 探测结果 / 会话提示 */}
+              <div className="flex flex-col gap-0.5 text-[10.5px] leading-tight">
+                <p className="truncate text-[var(--muted-foreground)]" title={pageKey ?? undefined}>
+                  {pageKey ? t('selector_scope_hint', [pageKey]) : t('selector_scope_unavailable')}
                 </p>
-              ) : null}
-              {probeState.kind === 'fail' ? (
-                <p className="mt-1.5 text-[11px] leading-tight text-[var(--destructive)]">{probeState.message}</p>
-              ) : null}
-              {sessionElsewhere ? (
-                <p className="mt-1.5 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-2 py-1.5 text-[11px] leading-tight text-[var(--muted-foreground)]">
-                  {t('selector_session_elsewhere', [sessionPageKey ?? ''])}
-                </p>
-              ) : null}
+                {probeState.kind === 'ok' ? (
+                  <p className="truncate text-[var(--primary)]">
+                    {t('selector_test_ok', [probeState.count])}
+                    <span className="font-mono">{probeState.preview}</span>
+                  </p>
+                ) : null}
+                {probeState.kind === 'fail' ? (
+                  <p className="text-[var(--destructive)]">{probeState.message}</p>
+                ) : null}
+                {sessionElsewhere ? (
+                  <p className="text-[var(--muted-foreground)]">{t('selector_session_elsewhere', [sessionPageKey ?? ''])}</p>
+                ) : null}
+              </div>
             </div>
 
-            <div className="mt-3 border-t border-[var(--border)] pt-3">
-              <p className="mb-1.5 text-xs text-[var(--muted-foreground)]">{t('click_action')}</p>
-              <div className="max-w-[220px]">
+            <div className="mt-1.5 flex items-center gap-2 border-t border-[var(--border)] pt-1.5">
+              <p className="shrink-0 text-[10.5px] text-[var(--muted-foreground)]">{t('click_action')}</p>
+              <div className="w-[124px] shrink-0">
                 <SegmentedControl
                   value={action}
                   ariaLabel={t('click_action')}
                   items={ACTION_ITEMS.map((i) => ({ value: i.value, label: t(i.labelKey) }))}
-                  onChange={(v) => void onActionChange(v as ClickAction)}
+                  onChange={(v) => void setAction(v as ClickAction)}
                 />
               </div>
-              <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+              <p className="min-w-0 flex-1 text-[10.5px] leading-tight text-[var(--muted-foreground)]">
                 {action === 'double' ? t('click_double_desc') : t('click_single_desc')}
               </p>
             </div>
@@ -176,5 +153,26 @@ export function RefreshTypeSection({
         ) : null}
       </div>
     </section>
+  );
+}
+
+function SmallButton({
+  onClick,
+  disabled,
+  children,
+}: {
+  onClick: () => void;
+  disabled?: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className="shrink-0 rounded border border-[var(--border)] px-1.5 py-0.5 text-[10.5px] font-medium leading-tight text-[var(--muted-foreground)] transition hover:border-[var(--primary)] hover:text-[var(--foreground)] disabled:cursor-not-allowed disabled:opacity-50"
+    >
+      {children}
+    </button>
   );
 }

@@ -183,11 +183,11 @@ export default function App() {
   );
 
   return (
-    <div className="flex max-h-[600px] flex-col bg-[var(--background)]">
+    <div className="flex max-h-[560px] flex-col bg-[var(--background)]">
       <Header session={session} options={options} control={control} />
-      <div className="flex flex-1 flex-col gap-4 overflow-y-auto px-4 pb-4 pt-3">
+      <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-2 py-2">
         {!ready ? (
-          <p className="px-1 py-6 text-center text-xs text-[var(--muted-foreground)]">{t('status_loading')}</p>
+          <p className="px-1 py-4 text-center text-[11px] text-[var(--muted-foreground)]">{t('status_loading')}</p>
         ) : (
           <>
             <IntervalSection options={options} patch={patch} />

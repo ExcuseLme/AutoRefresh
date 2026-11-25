@@ -57,13 +57,13 @@
     "message": "双击"
   },
   "click_double_desc": {
-    "message": "在目标元素上派发两次单击事件，并追加一次双击事件（适合双击子 tab 触发的局部刷新）"
+    "message": "派发两次点击 + 一次 dblclick"
   },
   "click_single": {
     "message": "单击"
   },
   "click_single_desc": {
-    "message": "在目标元素上派发一次完整的单击事件序列"
+    "message": "派发一次完整点击序列"
   },
   "err_interval_max": {
     "message": "间隔不能超过 86400 秒"
@@ -198,7 +198,7 @@
     "message": "XHR 刷新"
   },
   "refresh_xhr_desc": {
-    "message": "不重新加载页面，点击指定元素以触发页面自身的请求"
+    "message": "不重载页面，点击元素触发页面自身请求"
   },
   "refresh_xhr_selector": {
     "message": "自动点击元素选择器"

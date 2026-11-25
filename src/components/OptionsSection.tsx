@@ -24,25 +24,25 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
   };
 
   return (
-    <section className="flex flex-col gap-2">
+    <section className="flex flex-col gap-1">
       <button
         type="button"
         onClick={toggle}
         aria-expanded={!collapsed}
         aria-label={t('aria_opt_section_toggle')}
-        className="flex items-center gap-2 rounded-lg px-1 py-1 text-left"
+        className="flex items-center gap-1.5 rounded px-0.5 py-0.5 text-left"
       >
-        <span className="text-[var(--primary)]">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+        <span className="text-[var(--primary)] [&>svg]:h-3 [&>svg]:w-3">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
             <circle cx="12" cy="12" r="3" />
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
           </svg>
         </span>
-        <span className="flex-1 text-xs font-medium text-[var(--muted-foreground)]">{t('opt_title')}</span>
+        <span className="flex-1 text-[10.5px] font-medium text-[var(--muted-foreground)]">{t('opt_title')}</span>
         <span className="text-[var(--muted-foreground)]">
           <svg
-            width="14"
-            height="14"
+            width="12"
+            height="12"
             viewBox="0 0 24 24"
             fill="none"
             stroke="currentColor"
@@ -81,8 +81,8 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
             onChange={(v) => void patch({ refreshLimitEnabled: v })}
           >
             {options.refreshLimitEnabled ? (
-              <div className="flex items-center justify-between gap-3">
-                <span className="text-xs text-[var(--muted-foreground)]">{t('opt_refresh_limit_count')}</span>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[10.5px] text-[var(--muted-foreground)]">{t('opt_refresh_limit_count')}</span>
                 <IntField
                   value={options.refreshLimitCount}
                   min={1}
@@ -102,8 +102,8 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
             onChange={(v) => void patch({ interactions: v })}
           >
             {options.interactions ? (
-              <div className="flex flex-col gap-2.5">
-                <div className="flex flex-wrap gap-1.5" role="group" aria-label={t('opt_interactions')}>
+              <div className="flex flex-col gap-1">
+                <div className="flex flex-wrap gap-1" role="group" aria-label={t('opt_interactions')}>
                   {ACTIONS.map((a) => {
                     const active = options.interactionAction === a.value;
                     return (
@@ -113,7 +113,7 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
                         aria-pressed={active}
                         onClick={() => void patch({ interactionAction: a.value })}
                         className={[
-                          'flex items-center gap-1.5 rounded-lg border px-2.5 py-1.5 text-xs font-medium transition',
+                          'rounded border px-2 py-0.5 text-[10.5px] font-medium leading-tight transition',
                           active && a.danger
                             ? 'border-rose-300 bg-rose-50 text-rose-600'
                             : active
@@ -127,9 +127,9 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
                   })}
                 </div>
                 {options.interactionAction === 'restart' ? (
-                  <div className="flex items-center justify-between gap-3">
-                    <span className="text-xs text-[var(--muted-foreground)]">{t('act_restart_wait')}</span>
-                    <div className="flex items-center gap-1.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-[10.5px] text-[var(--muted-foreground)]">{t('act_restart_wait')}</span>
+                    <div className="flex items-center gap-1">
                       <IntField
                         value={options.interactionRestartWait}
                         min={0}
@@ -137,7 +137,7 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
                         name="interactionRestartWait"
                         onCommit={(v) => void patch({ interactionRestartWait: v })}
                       />
-                      <span className="text-xs text-[var(--muted-foreground)]">{t('act_restart_wait_unit')}</span>
+                      <span className="text-[10.5px] text-[var(--muted-foreground)]">{t('act_restart_wait_unit')}</span>
                     </div>
                   </div>
                 ) : null}
@@ -154,29 +154,32 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
             disabled={!options.interactions}
           />
 
-          <div className="rounded-xl border border-[var(--border)] bg-[var(--card)] p-3">
-            <div className="mb-2 flex items-center gap-3">
-              <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--secondary)] text-[var(--muted-foreground)]">
+          {/* 重定向：标题行 + 下拉 + 说明压成两行（原来占三行 + 大内边距） */}
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5">
+            <div className="flex items-center gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--secondary)] text-[var(--muted-foreground)] [&>svg]:h-3 [&>svg]:w-3">
                 <CompassIcon />
               </span>
-              <div className="min-w-0 flex-1">
-                <p className="text-sm font-medium leading-tight text-[var(--foreground)]">{t('opt_redirection')}</p>
-                <p className="mt-0.5 text-xs leading-tight text-[var(--muted-foreground)]">
+              <p className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--foreground)]">
+                {t('opt_redirection')}
+                <span className="ml-1.5 text-[10.5px] font-normal text-[var(--muted-foreground)]">
                   {t('opt_desc_redirection')}
-                </p>
+                </span>
+              </p>
+              <div className="w-[132px] shrink-0">
+                <Select<Redirection>
+                  value={options.redirection}
+                  ariaLabel={t('opt_redirection')}
+                  name="redirection"
+                  onChange={(v) => void patch({ redirection: v })}
+                  options={[
+                    { value: 'follow', label: t('redirect_follow') },
+                    { value: 'canonical', label: t('redirect_canonical') },
+                  ]}
+                />
               </div>
             </div>
-            <Select<Redirection>
-              value={options.redirection}
-              ariaLabel={t('opt_redirection')}
-              name="redirection"
-              onChange={(v) => void patch({ redirection: v })}
-              options={[
-                { value: 'follow', label: t('redirect_follow') },
-                { value: 'canonical', label: t('redirect_canonical') },
-              ]}
-            />
-            <p className="mt-1.5 text-[11px] leading-relaxed text-[var(--muted-foreground)]">
+            <p className="mt-0.5 truncate text-[10.5px] leading-tight text-[var(--muted-foreground)]">
               {t(options.redirection === 'canonical' ? 'redirect_canonical_desc' : 'redirect_follow_desc')}
             </p>
           </div>
@@ -220,7 +223,7 @@ function IntField({
       name={name}
       autoComplete="off"
       aria-label={ariaLabel}
-      className="no-spinner tnum w-16 rounded-lg border border-[var(--border)] bg-[var(--secondary)] px-2 py-1 text-right text-sm font-semibold text-[var(--foreground)] outline-none transition focus:border-[var(--primary)]"
+      className="no-spinner tnum w-14 rounded-md border border-[var(--border)] bg-[var(--secondary)] px-1.5 py-0.5 text-right text-[12px] font-semibold text-[var(--foreground)] outline-none transition focus:border-[var(--primary)]"
       value={focused ? draft : String(value)}
       min={min}
       onFocus={() => {

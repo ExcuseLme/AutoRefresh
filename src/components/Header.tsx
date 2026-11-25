@@ -68,23 +68,21 @@ export function Header({
 
   return (
     <header className="sticky top-0 z-10 border-b border-[var(--border)] bg-[var(--card)]">
-      <div className="flex items-center gap-3 px-4 py-3">
-        <div className="flex min-w-0 flex-1 items-center gap-2">
-          <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--primary)] text-[var(--primary-foreground)]">
-            <RefreshIcon />
-          </span>
-          <div className="min-w-0 leading-tight">
-            <p className="truncate text-sm font-semibold text-[var(--foreground)]">{t('app_name')}</p>
-            <p className="truncate text-[11px] text-[var(--muted-foreground)]">{statusLine(session, options)}</p>
-          </div>
+      <div className="flex items-center gap-2 px-2.5 py-1.5">
+        <span className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-[var(--primary)] text-[var(--primary-foreground)] [&>svg]:h-3.5 [&>svg]:w-3.5">
+          <RefreshIcon />
+        </span>
+        <div className="min-w-0 flex-1 leading-tight">
+          <p className="truncate text-[12.5px] font-semibold text-[var(--foreground)]">{t('app_name')}</p>
+          <p className="truncate text-[10.5px] text-[var(--muted-foreground)]">{statusLine(session, options)}</p>
         </div>
 
-        <div className="flex shrink-0 items-center gap-1.5">
+        <div className="flex shrink-0 items-center gap-1">
           {paused ? (
             <button
               type="button"
               onClick={() => void control.stop()}
-              className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--secondary)]"
+              className="rounded-md border border-[var(--border)] px-2 py-1 text-[11px] font-medium leading-tight text-[var(--muted-foreground)] transition hover:bg-[var(--secondary)]"
             >
               {t('action_stop')}
             </button>
@@ -93,7 +91,7 @@ export function Header({
             <button
               type="button"
               onClick={() => void control.pause()}
-              className="rounded-lg border border-[var(--border)] px-3 py-1.5 text-xs font-medium text-[var(--muted-foreground)] transition hover:bg-[var(--secondary)]"
+              className="rounded-md border border-[var(--border)] px-2 py-1 text-[11px] font-medium leading-tight text-[var(--muted-foreground)] transition hover:bg-[var(--secondary)]"
             >
               {t('action_pause')}
             </button>
@@ -102,7 +100,7 @@ export function Header({
             type="button"
             onClick={() => void onPrimary()}
             className={[
-              'flex items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-semibold text-white transition',
+              'flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold leading-tight text-white transition',
               running ? 'bg-[var(--destructive)] hover:opacity-90' : 'bg-[var(--primary)] hover:bg-[var(--primary-hover)]',
             ].join(' ')}
           >
@@ -112,10 +110,10 @@ export function Header({
         </div>
       </div>
       {error ? (
-        <p className="px-4 pb-2 text-[11px] leading-tight text-[var(--destructive)]">{error}</p>
+        <p className="px-2.5 pb-1.5 text-[10.5px] leading-tight text-[var(--destructive)]">{error}</p>
       ) : null}
       {session?.lastError ? (
-        <p className="px-4 pb-2 text-[11px] leading-tight text-[var(--destructive)]">
+        <p className="px-2.5 pb-1.5 text-[10.5px] leading-tight text-[var(--destructive)]">
           {failureText(session)}
         </p>
       ) : null}

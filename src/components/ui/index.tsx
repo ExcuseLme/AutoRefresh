@@ -1,7 +1,17 @@
 import { useState } from 'react';
 import { parseIntInRange } from '@/lib/number-input';
 
-/** 通用分段控件（docs/04 §4.1 / §4.2）。视觉对齐 ARP：圆角外壳 + 选中项白底 */
+/**
+ * 紧凑版 UI 原子组件（docs/04 §4 / ADR-023）
+ *
+ * 设计基准（全部比 ARP 继承版小一档，但不牺牲可点面积）：
+ *   分段控件  py-1 / 11px 文字 / 圆角 lg
+ *   数字输入  按钮 h-7 w-7，数字 20px
+ *   开关      18×32
+ *   选项行    py-1.5，图标 14px
+ */
+
+/** 通用分段控件。视觉对齐 ARP：圆角外壳 + 选中项白底 */
 export function SegmentedControl({
   value,
   items,
@@ -14,11 +24,7 @@ export function SegmentedControl({
   ariaLabel?: string;
 }) {
   return (
-    <div
-      role="tablist"
-      aria-label={ariaLabel}
-      className="flex gap-1 rounded-xl bg-[var(--secondary)] p-1"
-    >
+    <div role="tablist" aria-label={ariaLabel} className="flex gap-0.5 rounded-lg bg-[var(--secondary)] p-0.5">
       {items.map((item) => {
         const active = item.value === value;
         return (
@@ -29,7 +35,7 @@ export function SegmentedControl({
             aria-selected={active}
             onClick={() => onChange(item.value)}
             className={[
-              'flex-1 rounded-lg px-3 py-2 text-sm font-medium transition',
+              'flex-1 rounded-md px-2 py-1 text-[11px] font-medium leading-tight transition',
               active
                 ? 'bg-[var(--card)] text-[var(--foreground)] shadow-sm'
                 : 'text-[var(--muted-foreground)] hover:text-[var(--foreground)]',
@@ -43,8 +49,7 @@ export function SegmentedControl({
   );
 }
 
-/** 踏步输入：居中大数字 + 自绘 −/+。回车/失焦提交
- *  −/+ 对同一个数字做 ∓1（ADR-021：不是"在预设间跳转"） */
+/** 踏步输入：居中数字 + 自绘 −/+。回车/失焦提交 */
 export function NumberStepper({
   value,
   min,
@@ -86,22 +91,13 @@ export function NumberStepper({
   };
 
   return (
-    <div className="flex items-center gap-2">
-      <button
-        type="button"
-        aria-label={decreaseLabel}
-        onClick={() => step(-1)}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--secondary)] text-[var(--secondary-foreground)] transition hover:border-[var(--primary)]"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
-          <path d="M5 12h14" strokeLinecap="round" />
-        </svg>
-      </button>
+    <div className="flex items-center gap-1.5">
+      <StepButton label={decreaseLabel} onClick={() => step(-1)} minus />
       <input
         type="number"
         name={name}
         autoComplete="off"
-        className="no-spinner tnum min-w-0 flex-1 bg-transparent text-center text-3xl font-bold text-[var(--foreground)] outline-none"
+        className="no-spinner tnum min-w-0 flex-1 bg-transparent text-center text-xl font-bold leading-none text-[var(--foreground)] outline-none"
         aria-label={ariaLabel}
         value={shown}
         min={min}
@@ -120,22 +116,34 @@ export function NumberStepper({
           if (e.key === 'Enter') e.currentTarget.blur();
         }}
       />
-      <button
-        type="button"
-        aria-label={increaseLabel}
-        onClick={() => step(1)}
-        className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-[var(--border)] bg-[var(--secondary)] text-[var(--secondary-foreground)] transition hover:border-[var(--primary)]"
-      >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
-          <path d="M5 12h14" strokeLinecap="round" />
-          <path d="M12 5v14" strokeLinecap="round" />
-        </svg>
-      </button>
+      <StepButton label={increaseLabel} onClick={() => step(1)} />
     </div>
   );
 }
 
-/** 开关（role=switch，docs/04 §5） */
+function StepButton({ label, onClick, minus = false }: { label: string; onClick: () => void; minus?: boolean }) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border border-[var(--border)] bg-[var(--secondary)] text-[var(--secondary-foreground)] transition hover:border-[var(--primary)]"
+    >
+      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" aria-hidden>
+        {minus ? (
+          <path d="M5 12h14" strokeLinecap="round" />
+        ) : (
+          <>
+            <path d="M5 12h14" strokeLinecap="round" />
+            <path d="M12 5v14" strokeLinecap="round" />
+          </>
+        )}
+      </svg>
+    </button>
+  );
+}
+
+/** 开关（role=switch） */
 export function Switch({
   checked,
   onChange,
@@ -156,22 +164,22 @@ export function Switch({
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={[
-        'relative h-5 w-9 shrink-0 rounded-full transition-colors',
+        'relative h-[18px] w-8 shrink-0 rounded-full transition-colors',
         disabled ? 'cursor-not-allowed opacity-50' : '',
         checked ? 'bg-[var(--primary)]' : 'bg-[var(--secondary-foreground)]/25',
       ].join(' ')}
     >
       <span
         className={[
-          'absolute top-0.5 h-4 w-4 rounded-full bg-white shadow-sm transition-all',
-          checked ? 'left-4.5' : 'left-0.5',
+          'absolute top-0.5 h-3.5 w-3.5 rounded-full bg-white shadow-sm transition-all',
+          checked ? 'left-[15px]' : 'left-0.5',
         ].join(' ')}
       />
     </button>
   );
 }
 
-/** 下拉（重定向行为，docs/04 §4.3） */
+/** 下拉（重定向行为） */
 export function Select<T extends string>({
   value,
   options,
@@ -192,7 +200,7 @@ export function Select<T extends string>({
         aria-label={ariaLabel}
         value={value}
         onChange={(e) => onChange(e.currentTarget.value as T)}
-        className="w-full appearance-none rounded-lg border border-[var(--border)] bg-[var(--card)] px-3 py-2 pr-8 text-sm text-[var(--foreground)] outline-none transition hover:border-[var(--primary)]"
+        className="w-full appearance-none rounded-md border border-[var(--border)] bg-[var(--card)] px-2 py-1 pr-6 text-[11px] leading-tight text-[var(--foreground)] outline-none transition hover:border-[var(--primary)]"
       >
         {options.map((o) => (
           <option key={o.value} value={o.value}>
@@ -200,8 +208,8 @@ export function Select<T extends string>({
           </option>
         ))}
       </select>
-      <span className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
+      <span className="pointer-events-none absolute right-1.5 top-1/2 -translate-y-1/2 text-[var(--muted-foreground)]">
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden>
           <path d="m6 9 6 6 6-6" strokeLinecap="round" strokeLinejoin="round" />
         </svg>
       </span>
@@ -209,7 +217,7 @@ export function Select<T extends string>({
   );
 }
 
-/** 选项卡片行：图标 + 标题/副标题 + 右侧控件，可展开子内容（docs/04 §4.3） */
+/** 选项行：图标 + 标题/副标题 + 右侧控件，可展开子内容 */
 export function SwitchRow({
   icon,
   title,
@@ -228,18 +236,18 @@ export function SwitchRow({
   children?: React.ReactNode;
 }) {
   return (
-    <div className="rounded-xl border border-[var(--border)] bg-[var(--card)]">
-      <div className="flex items-center gap-3 p-3">
-        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-[var(--secondary)] text-[var(--muted-foreground)]">
+    <div className="rounded-lg border border-[var(--border)] bg-[var(--card)]">
+      <div className="flex items-center gap-2 px-2.5 py-1.5">
+        <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--secondary)] text-[var(--muted-foreground)] [&>svg]:h-3 [&>svg]:w-3">
           {icon}
         </span>
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium leading-tight text-[var(--foreground)]">{title}</p>
-          <p className="mt-0.5 text-xs leading-tight text-[var(--muted-foreground)]">{description}</p>
+        <div className="min-w-0 flex-1 leading-tight">
+          <p className="truncate text-[12px] font-medium text-[var(--foreground)]">{title}</p>
+          <p className="truncate text-[10.5px] text-[var(--muted-foreground)]">{description}</p>
         </div>
         <Switch checked={checked} onChange={onChange} ariaLabel={title} disabled={disabled} />
       </div>
-      {children ? <div className="border-t border-[var(--border)] px-3 py-3">{children}</div> : null}
+      {children ? <div className="border-t border-[var(--border)] px-2.5 py-1.5">{children}</div> : null}
     </div>
   );
 }
