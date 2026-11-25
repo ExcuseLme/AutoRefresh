@@ -290,6 +290,21 @@ T-43（浏览器重启）、T-46（与 ARP 并存）。这三项的代码路径�
 | 随机档用自定义值 | ✅ | 单测：`intervalMode=random` + `interactionRestartWait=5` ⇒ `waitSeconds=5` |
 | 脏数据防御 | ✅ | 负数夹到 0、小数四舍五入（`tests/restart-wait.test.ts`） |
 
+### 交互触发范围 + 视觉分组 + 头部按钮（ADR-027，第八轮）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| 默认档 `outside-input` | ✅ | 默认 `ignoreInputField=true` ⇒ 状态行 `当前：输入框外的交互触发` |
+| 开「仅输入框内」⇒ `inside-input-only` | ✅ | 状态行变 `当前：仅输入框内的交互触发`；存储 `inputOnly=true`（`ignoreInputField` 保留为 true） |
+| 关「仅输入框内」⇒ 自动回原档 | ✅ | 状态行回到 `当前：输入框外的交互触发`（因为没动 `ignoreInputField`） |
+| 开「忽略输入框交互」⇒ 真的切换 | ✅ | `interactionInputOnly` 被同时清掉，状态行变 `当前：输入框外的交互触发` |
+| 两开关都不置灰 | ✅ | `ignoreDisabled=false`；任何时候都能直接切换 |
+| 「刷新类型」与间隔粘成一组 | ✅ | 外层一张卡片 + 中间分隔线（截图 `impl-v8-fused-groups.png`） |
+| 两个触发范围开关收进父卡片 | ✅ | `border-l-2` 缩进，视觉上从属于「用户交互时的刷新行为」 |
+| 头部按钮位置固定 | ✅ | 未运行 `[开始]` / 运行中 `[暂停][停止]` / 已暂停 `[继续][停止]`，右侧始终在右 |
+| 暂停态直接点「停止」 | ✅ | 点右侧按钮即停，变回 `[开始]`，不必先「继续」 |
+| 单测覆盖 | ✅ | `tests/interaction-scope.test.ts` 16 例（三档组合 / 优先级 / 单向互斥 / restart 取值） |
+
 ### 回归
 
 | 用例 | 结果 | 证据 |

@@ -131,6 +131,9 @@
   "opt_desc_ignore_input": {
     "message": "在输入框内点击或打字也继续刷新"
   },
+  "opt_desc_input_only": {
+    "message": "只在输入框里点击或打字时才触发，普通点击与滚动不影响刷新"
+  },
   "opt_desc_interactions": {
     "message": "使用页面时的行为"
   },
@@ -149,6 +152,9 @@
   "opt_ignore_input": {
     "message": "忽略输入框交互"
   },
+  "opt_input_only": {
+    "message": "仅输入框内触发"
+  },
   "opt_interactions": {
     "message": "用户交互时的刷新行为"
   },
@@ -166,6 +172,9 @@
   },
   "opt_title": {
     "message": "选项"
+  },
+  "opt_trigger_scope": {
+    "message": "触发范围"
   },
   "pick_element": {
     "message": "选择元素"
@@ -205,6 +214,15 @@
   },
   "refresh_xhr_selector_placeholder": {
     "message": "例如 #refresh-btn 或 .load-more"
+  },
+  "scope_all": {
+    "message": "当前：任何交互都触发"
+  },
+  "scope_inside_input_only": {
+    "message": "当前：仅输入框内的交互触发"
+  },
+  "scope_outside_input": {
+    "message": "当前：输入框外的交互触发"
   },
   "selector_scope_hint": {
     "message": "仅对当前页面生效：$1"

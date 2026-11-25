@@ -205,6 +205,22 @@ if (!(!n?.status || t?.isInput && i.ignoreInputField) && Gh(n.status) && r?.doma
 - `pause`：保留 `count`，`prevStatus` 记录，`RESUME` 时回到原状态（ARP `mS`/`hS`/`gS`）。
 - `stop`：清会话（ARP 还会 `markRecentlyStopped` 以便"最近停止"列表，本扩展不需要该列表，故只清理）。
 
+### 5.2.0 谁算"用户交互"（ADR-027）
+
+`decideInteraction(opt, isInput)` 的第一层过滤是**触发范围**（`triggerScope`），三档：
+
+| 档位 | 条件 | 判定 |
+| --- | --- | --- |
+| `all` | 两个子开关都关 | 都触发 |
+| `outside-input` | `ignoreInputField=true` 且 `interactionInputOnly=false` | `isInput` 时不触发（默认档） |
+| `inside-input-only` | `interactionInputOnly=true` | `isInput` 时才触发；普通点击/滚动不影响倒计时 |
+
+`interactionInputOnly` 优先于 `ignoreInputField`：两者同时为真时取 `inside-input-only`，
+不会产生"任何交互都不触发"的死状态。
+
+调用方（`background.ts` 的 `onInteraction`）只判断 `target` 是不是输入类元素
+（`input` / `textarea` / `contenteditable`），滚动与普通点击按 `isInput=false` 传进来。
+
 ### 5.2.1 restart 的等待秒数怎么取（ADR-026）
 
 `decideInteraction` 里的 `waitSeconds` 不直接取 `interactionRestartWait`，而是走

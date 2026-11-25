@@ -41,6 +41,7 @@ export function RefreshTypeSection({
   pageKey,
   setSelector,
   setAction,
+  fused = false,
 }: {
   options: Options;
   patch: PatchFn;
@@ -51,6 +52,8 @@ export function RefreshTypeSection({
   pageKey: string | null;
   setSelector: (selector: string) => Promise<{ ok: boolean; code?: string }>;
   setAction: (action: ClickAction) => Promise<{ ok: boolean; code?: string }>;
+  /** 与「间隔」粘成同一个视觉组时传 true（ADR-027）：去掉自身边框/圆角/背景 */
+  fused?: boolean;
 }) {
   const current = TYPE_ITEMS.find((i) => i.value === options.refreshType) ?? TYPE_ITEMS[0]!;
   const [probeState, setProbeState] = useState<ProbeState>({ kind: 'idle' });
@@ -74,8 +77,8 @@ export function RefreshTypeSection({
   };
 
   return (
-    <section className="flex flex-col gap-1.5">
-      <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5">
+    <section className="flex flex-col">
+      <div className={fused ? 'px-2.5 py-1.5' : 'rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5'}>
         {/* 标题 + 说明同一行，省掉一整段说明占位 */}
         <div className="mb-1 flex items-baseline gap-2">
           <p className="shrink-0 text-[10.5px] font-medium text-[var(--muted-foreground)]">{t('refresh_type')}</p>

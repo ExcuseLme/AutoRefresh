@@ -190,18 +190,26 @@ export default function App() {
           <p className="px-1 py-4 text-center text-[11px] text-[var(--muted-foreground)]">{t('status_loading')}</p>
         ) : (
           <>
-            <IntervalSection options={options} patch={patch} />
-            <RefreshTypeSection
-              options={options}
-              patch={patch}
-              probe={probe}
-              pick={pick}
-              pageSelector={pageSelector}
-              sessionPageKey={sessionPageKey}
-              pageKey={pageKey}
-              setSelector={setSelector}
-              setAction={setAction}
-            />
+            {/*
+             * ADR-027：把「间隔」与「刷新类型」粘成**同一个视觉组** ——
+             * 外层画一次卡片边框，内部用分隔线切行，不再是两张独立卡片。
+             */}
+            <div className="overflow-hidden rounded-lg border border-[var(--border)] bg-[var(--card)]">
+              <IntervalSection options={options} patch={patch} fused />
+              <div className="border-t border-[var(--border)]" />
+              <RefreshTypeSection
+                options={options}
+                patch={patch}
+                probe={probe}
+                pick={pick}
+                pageSelector={pageSelector}
+                sessionPageKey={sessionPageKey}
+                pageKey={pageKey}
+                setSelector={setSelector}
+                setAction={setAction}
+                fused
+              />
+            </div>
             <OptionsSection options={options} patch={patch} />
           </>
         )}

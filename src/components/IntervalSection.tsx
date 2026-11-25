@@ -12,15 +12,26 @@ const MODE_ITEMS = [
 ];
 
 /**
- * 间隔段落（紧凑版）。设计依据 docs/04 §4.1 / ADR-021 / ADR-023
+ * 间隔段落。设计依据 docs/04 §4.1 / ADR-021 / ADR-023 / ADR-027
  *
  * 核心约定：**只有一个数字输入组件**，它是固定档唯一的数据来源。
  *   - 点 −/+          ⇒ 对当前数字 ∓1
  *   - 点预设 chip      ⇒ 把该数字"上屏"到输入框
  *   - 手动点数字并输入 ⇒ 直接改这个数字
  * 三者都写同一字段 `fixedSeconds`，并立即落库。
+ *
+ * `fused`：与「刷新类型」粘成同一个视觉组时传 true —— 去掉自己的边框/圆角/背景，
+ * 由父容器统一画外框，中间用分隔线切行（ADR-027）。
  */
-export function IntervalSection({ options, patch }: { options: Options; patch: PatchFn }) {
+export function IntervalSection({
+  options,
+  patch,
+  fused = false,
+}: {
+  options: Options;
+  patch: PatchFn;
+  fused?: boolean;
+}) {
   const [error, setError] = useState<string | null>(null);
 
   const setMode = (mode: IntervalMode) => {
@@ -41,17 +52,25 @@ export function IntervalSection({ options, patch }: { options: Options; patch: P
     setError(res.ok ? null : t(res.code ?? 'err_random_range'));
   };
 
+  const sectionCls = fused ? 'flex flex-col' : 'flex flex-col gap-1.5';
+  const cardCls = fused
+    ? 'px-2.5 py-1.5'
+    : 'rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5';
+  const modeCls = fused ? 'px-2.5 py-1.5' : '';
+
   return (
-    <section className="flex flex-col gap-1.5">
-      <SegmentedControl
-        value={options.intervalMode}
-        items={MODE_ITEMS.map((m) => ({ value: m.value, label: t(m.labelKey) }))}
-        onChange={(v) => setMode(v as IntervalMode)}
-        ariaLabel={t('interval_title')}
-      />
+    <section className={sectionCls}>
+      <div className={modeCls}>
+        <SegmentedControl
+          value={options.intervalMode}
+          items={MODE_ITEMS.map((m) => ({ value: m.value, label: t(m.labelKey) }))}
+          onChange={(v) => setMode(v as IntervalMode)}
+          ariaLabel={t('interval_title')}
+        />
+      </div>
 
       {options.intervalMode === 'fixed' ? (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5">
+        <div className={cardCls}>
           {/* 一行放下：− 数字 + 秒 ｜快捷 chip（右侧原本空白，正好容下 4 个 chip） */}
           <div className="flex items-center gap-1.5">
             <div className="w-[128px] shrink-0">
@@ -85,7 +104,7 @@ export function IntervalSection({ options, patch }: { options: Options; patch: P
       ) : null}
 
       {options.intervalMode === 'random' ? (
-        <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5">
+        <div className={cardCls}>
           <div className="flex items-center gap-2">
             <LabeledInt
               label={t('interval_min_sec')}
@@ -121,7 +140,7 @@ export function IntervalSection({ options, patch }: { options: Options; patch: P
         </div>
       ) : null}
 
-      {error ? <p className="text-[10.5px] leading-tight text-[var(--destructive)]">{error}</p> : null}
+      {error ? <p className="px-2.5 pb-1 text-[10.5px] leading-tight text-[var(--destructive)]">{error}</p> : null}
     </section>
   );
 }

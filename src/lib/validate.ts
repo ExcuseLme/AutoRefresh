@@ -167,6 +167,7 @@ export function validateOptions(input: unknown): ValidationResult {
       codeMin: 'err_restart_wait',
       codeMax: 'err_restart_wait',
     }),
+    interactionInputOnly: readBool('interactionInputOnly', DEFAULT_OPTIONS.interactionInputOnly),
     ignoreInputField: readBool('ignoreInputField', DEFAULT_OPTIONS.ignoreInputField),
     redirection,
   };

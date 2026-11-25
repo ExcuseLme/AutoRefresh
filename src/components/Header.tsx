@@ -39,6 +39,19 @@ function failureText(session: Session): string {
   return n > 1 ? `${base} ${t('status_failed_times', [n])}` : base;
 }
 
+/**
+ * 头部（ADR-028 重新设计按钮语义）
+ *
+ * 两个按钮位置固定、职责固定，不再随状态互换左右：
+ *   左侧：**只在运行中出现**，内容为「暂停」/「继续」
+ *   右侧：始终存在，内容为「开始」/「停止」
+ *
+ * | 状态 | 左侧 | 右侧 |
+ * | --- | --- | --- |
+ * | 未运行 | （无） | 开始 |
+ * | 运行中 | 暂停 | 停止 |
+ * | 已暂停 | 继续 | 停止 |
+ */
 export function Header({
   session,
   options,
@@ -49,21 +62,26 @@ export function Header({
   control: Control;
 }) {
   const [error, setError] = useState<string | null>(null);
-  const running = session !== null && (session.status === 'start' || session.status === 'wait');
+
+  /** 右侧主按钮：未运行 ⇒ 开始；运行中或已暂停 ⇒ 停止（永远是"停止"，不变成"继续"） */
+  const active = session !== null;
   const paused = session?.status === 'pause';
 
   const onPrimary = async () => {
     setError(null);
-    if (running) {
+    if (active) {
       await control.stop();
-      return;
-    }
-    if (paused) {
-      await control.resume();
       return;
     }
     const code = await control.start();
     if (code) setError(t(code));
+  };
+
+  /** 左侧副按钮：只在运行中/已暂停时出现 */
+  const onSecondary = async () => {
+    setError(null);
+    if (paused) await control.resume();
+    else await control.pause();
   };
 
   return (
@@ -78,34 +96,28 @@ export function Header({
         </div>
 
         <div className="flex shrink-0 items-center gap-1">
-          {paused ? (
+          {/* 左侧副按钮：暂停 / 继续（只在会话存在时渲染，位置永远在左） */}
+          {active ? (
             <button
               type="button"
-              onClick={() => void control.stop()}
+              onClick={() => void onSecondary()}
               className="rounded-md border border-[var(--border)] px-2 py-1 text-[11px] font-medium leading-tight text-[var(--muted-foreground)] transition hover:bg-[var(--secondary)]"
             >
-              {t('action_stop')}
+              {paused ? t('action_resume') : t('action_pause')}
             </button>
           ) : null}
-          {running ? (
-            <button
-              type="button"
-              onClick={() => void control.pause()}
-              className="rounded-md border border-[var(--border)] px-2 py-1 text-[11px] font-medium leading-tight text-[var(--muted-foreground)] transition hover:bg-[var(--secondary)]"
-            >
-              {t('action_pause')}
-            </button>
-          ) : null}
+
+          {/* 右侧主按钮：开始 / 停止（永远在右，内容只会是这两个之一） */}
           <button
             type="button"
             onClick={() => void onPrimary()}
             className={[
               'flex items-center gap-1 rounded-md px-2.5 py-1 text-[11px] font-semibold leading-tight text-white transition',
-              running ? 'bg-[var(--destructive)] hover:opacity-90' : 'bg-[var(--primary)] hover:bg-[var(--primary-hover)]',
+              active ? 'bg-[var(--destructive)] hover:opacity-90' : 'bg-[var(--primary)] hover:bg-[var(--primary-hover)]',
             ].join(' ')}
           >
-            {running ? <StopIcon /> : <PlayIcon />}
-            {running ? t('action_stop') : paused ? t('action_resume') : t('action_start')}
+            {active ? <StopIcon /> : <PlayIcon />}
+            {active ? t('action_stop') : t('action_start')}
           </button>
         </div>
       </div>
@@ -147,4 +159,3 @@ function StopIcon() {
     </svg>
   );
 }
-

@@ -48,6 +48,9 @@ export type Options = {
   interactionAction: InteractionAction;
   /** 重新开始前等待秒数，仅 interactionAction==='restart' 时生效 */
   interactionRestartWait: number;
+  /** ADR-027：只让"输入框内点击/打字"触发交互动作；普通点击/滚动不影响刷新 */
+  interactionInputOnly: boolean;
+  /** 输入框内的点击/打字**不**触发交互动作（interactionInputOnly=false 时才有意义） */
   ignoreInputField: boolean;
   redirection: Redirection;
 };
@@ -70,6 +73,7 @@ export const DEFAULT_OPTIONS: Options = {
   interactions: false,
   interactionAction: 'stop',
   interactionRestartWait: 5,
+  interactionInputOnly: false,
   ignoreInputField: true,
   redirection: 'follow',
 };
