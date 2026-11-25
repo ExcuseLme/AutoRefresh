@@ -363,6 +363,20 @@ T-43（浏览器重启）、T-46（与 ARP 并存）。这三项的代码路径�
 | schema 迁移 v3→v4 | ✅ | 旧「仅框内」⇒ `hold-input`；其余有 v3 数据 ⇒ `stable`；空存档 ⇒ 默认值 |
 | 迁移后字段清理 | ✅ | `interactions`/`interactionAction`/`interactionRestartWait`/`interactionInputOnly`/`ignoreInputField` 全部不在 DEFAULT_OPTIONS |
 
+### readOnly 误判 + 暂停续数（ADR-033 / ADR-034，第十四轮，v0.4.1）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| readonly 展示框有值 ⇒ 不暂停 | ✅ | 自建复现页（readonly clone-url + 空可编辑框）：`status=start` / `badge=1m` |
+| readonly 带焦点 ⇒ 不暂停 | ✅ | 单测：readOnly 输入框 focus 后 `computeInputHold=false` |
+| 普通可编辑框有值 ⇒ 仍暂停 | ✅ | `status=pause` / `input-hold` / `II`（修复没做过头） |
+| 普通可编辑框获得焦点 ⇒ 暂停 | ✅ | `status=pause` / `II` |
+| 全部清空 ⇒ 恢复 | ✅ | `status=start` / `badge=1m` |
+| 暂停时记住剩余 | ✅ | `pausedRemainMs≈82.7s`（120s 间隔下走了约 37s） |
+| 继续从原数字接着数 | ✅ | 继续后 `remainMs≈77.7s`，**不是** 120s、**也没有**立即刷新 |
+| 暂停期间不刷新 | ✅ | 暂停 5 秒后 `count` 无变化、`pausedRemainMs` 不变、`status` 仍 `pause` |
+| 面板显示剩余 | ✅ | `已暂停 · 第 N 次 · 剩余 X 秒`（`status_paused_remain`） |
+
 ### 回归
 
 | 用例 | 结果 | 证据 |

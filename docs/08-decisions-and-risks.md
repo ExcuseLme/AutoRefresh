@@ -591,6 +591,59 @@
   | `stable` 档 + 焦点 + 有内容 | `start` | null | `1m`（**不暂停**） |
 
   单测 `tests/input-hold.test.ts`（12 例）+ `tests/interaction-scope.test.ts`（4 例）。
+
+### ADR-033 · `readOnly` / `disabled` 输入框不得触发「输入框占用」
+
+- **背景**（用户 bug 报告）："`输入框占用时暂停` 有严重 bug，我在 `<Bitbucket PR 页面>`
+  该页面中焦点不处于任何输入框内，且所有输入框内均无内容，但还是会触发自动暂停"。
+- **根因**：该页面有一个 `readonly` 的 `<input class="clone-url-input">`，`value` 永远是
+  clone 地址（`http://git.prd.fun/git/scm/scf/bmw-service.git`）。
+  ADR-032 的 `hasContent()` 只排除了 `disabled`，**没排除 `readOnly`** ⇒
+  "有内容"判定恒为真 ⇒ 倒计时永久暂停。用户看到的就是"我没填任何东西却一直暂停"。
+- **决策**：把判据从"**有没有值**"改成"**用户能不能把它清掉**"：
+  `readOnly` / `disabled` 的 input / textarea 一律视为"没有内容"，`isEditableFocus()`
+  同样排除它们（用户无法编辑，焦点落在上面也不算"在输入"）。
+  `contenteditable` 不受影响（它不是 readonly 概念）。
+- **为什么这类元素很多**：Bitbucket / GitLab / GitHub 都用 readonly 输入框展示
+  clone URL、SSH 地址、token 等"可复制但不可编辑"的信息。这类页面本不该被算作"输入中"。
+- **验证**：
+  - 单测 `tests/input-hold-readonly.test.ts`（6 例）：readOnly 有值/无值/带焦点都不占用；
+    普通可编辑框有值仍占用（不把修复做过头）；混合场景不占用。
+  - 自建复现页 `readonly-hold.html`（含 readonly clone-url + readonly 空框 + 普通空框 +
+    普通有值框 + contenteditable），实测：
+    | 场景 | session | badge |
+    | --- | --- | --- |
+    | 只有 readonly 展示框有值 | `start` | `1m`（**修复生效**） |
+    | focus 到普通空输入框 | `pause` / `input-hold` | `II` |
+    | 普通框有值（无焦点） | `pause` | `II` |
+    | 全部清空 | `start` | `1m` |
+
+### ADR-034 · 暂停要记住剩余时间，继续从那个数字接着数
+
+- **背景**（用户 bug 报告）："`暂停`/`继续` 按钮的逻辑有问题，在暂停之后不会记住当前倒计时到多少了，
+  点击继续后会立即触发刷新而不是继续之前倒计时的数字继续倒计时"。
+- **根因**：`pause()` 只把 `status` 改成 `'pause'` 并 disarm 定时器，**没有记录已数掉多少**；
+  `resume()` 则直接 `confirmStarted(下一轮) + executeRound()` ——
+  既丢掉了进度，又立刻刷新了一轮。
+- **决策**：
+  1. `Session` 新增 `pausedRemainMs?: number`，**只在手动暂停**时写入
+     `max(0, armedAt + delayMs - now)`。
+  2. `resume()` 从 `pausedRemainMs` 接着数：**不立即刷新**，等剩下的那几秒走完才刷新。
+     实现方式是把 `armedAt` 往回挪：`armedAt = now - (delayMs - remain)`，
+     这样面板/徽章现有的 `armedAt + delayMs - now` 读取逻辑完全不用改。
+  3. `pausedRemainMs` 只在**手动暂停**用；输入框占用暂停（`hold-input`）**不走这个字段** ——
+     按 ADR-032 的既定语义，它解除后仍是"重新计一整轮"（避免刚离开输入框就被刷新）。
+  4. 面板在手动暂停时显示 `已暂停 · 第 N 次 · 剩余 X 秒`（新 key `status_paused_remain`），
+     让用户知道继续后会从哪接着数。
+- **边界**：`pausedRemainMs` 缺失（旧存档）或为 0（暂停发生在最后一刻）时，
+  退回"按新一轮走 + 立即刷新"，保持可用。
+- **验证**：
+  - 单测 `tests/pause-resume.test.ts`（6 例）：剩余算式、继续后 1 秒仍剩 6 秒、
+    最后一刻不为负、`summarize` 对手动暂停/占用暂停的区分。
+  - 浏览器实测（10s 间隔）：暂停时记下剩余，暂停状态等 5 秒期间 `count` 不涨、
+    `pausedRemainMs` 不变；继续后 `status=start`、剩余约为暂停时的值（**不是** 10 秒整、
+    也**没有**立即刷新）。
+  - 120s 间隔实测：暂停 `pausedRemainMs≈82.7s`，继续后 `remainMs≈77.7s`（接着数）。
 ## 2. 开放问题（**已全部关闭**，结论见下表；实现按结论落地）
 
 | ID | 问题 | 结论（用户已确认或已采纳默认） | 落地 |
@@ -655,3 +708,4 @@
 | 2026-11-25 | **ADR-030**（拾取器 sweep 阶段：选中手势不穿透页面；v0.2.0 → v0.2.1） | lead |
 | 2026-11-25 | **ADR-031**（测试选择器滚动+呼吸高亮；图标实时倒计时；v0.2.1 → v0.3.0） | lead |
 | 2026-11-25 | **ADR-032**（交互只留两档：稳定刷新 / 输入框占用时暂停；schema v3→v4；v0.3.0 → v0.4.0） | lead |
+| 2026-11-25 | **ADR-033**（readOnly/disabled 输入框不算占用）+ **ADR-034**（暂停记住剩余时间；v0.4.0 → v0.4.1） | lead |

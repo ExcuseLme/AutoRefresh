@@ -300,10 +300,21 @@ export default defineBackground(() => {
     return { ok: true };
   }
 
+  /**
+   * 用户手动暂停（ADR-034）。
+   *
+   * 关键：**记住剩余时间**。用户点暂停时，本轮已经数到哪就存进 `pausedRemainMs`，
+   * 点继续时从那个位置接着数（而不是重新计一整轮、也不是立刻刷新）。
+   *
+   * 同时清掉 `input-hold` 标记 —— 手动暂停不该被"输入框占用解除"自动恢复。
+   */
   async function pause(tabId: number): Promise<{ ok: true }> {
     const s = sessions.get(tabId);
     if (s && canPause(s.status)) {
       s.status = 'pause';
+      // 记住还剩多少（数掉的部分不还给用户，按"停在哪里就从哪里接着"）
+      s.pausedRemainMs = Math.max(0, s.armedAt + s.delayMs - Date.now());
+      delete s.waitReason;
       await persist();
       await disarmTimer(tabId);
       await updateBadge();
@@ -311,11 +322,33 @@ export default defineBackground(() => {
     return { ok: true };
   }
 
+  /**
+   * 用户手动继续（ADR-034）。
+   *
+   * 从 `pausedRemainMs` 接着数：**不立即刷新**，等剩下的那几秒走完才刷新。
+   * 与 `hold-input` 的自动恢复不同 —— 后者按 ADR-032 是"重新计一整轮"
+   * （因为用户刚离开输入框，立刻刷新观感差）。
+   */
   async function resume(tabId: number): Promise<{ ok: true }> {
     const s = sessions.get(tabId);
     if (s && canResume(s.status)) {
-      confirmStarted(s, nextDelayMs(options, s.prevDelayMs));
-      await executeRound(tabId);
+      const remain = s.pausedRemainMs;
+      delete s.pausedRemainMs;
+
+      if (remain !== undefined && remain > 0) {
+        // 接着数：把 armedAt 往回挪，使 "armedAt + delayMs - now === remain"
+        s.status = 'start';
+        delete s.waitReason;
+        s.armedAt = Date.now() - (s.delayMs - remain);
+        s.timerToken = token();
+        await persist();
+        await armTimer(tabId, s.timerToken, remain);
+        await updateBadge();
+      } else {
+        // 没有剩余记录（旧存档 / 剩余刚好为 0）：按新一轮走，并立即刷新
+        confirmStarted(s, nextDelayMs(options, s.prevDelayMs));
+        await executeRound(tabId);
+      }
     }
     return { ok: true };
   }

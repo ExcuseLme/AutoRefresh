@@ -24,8 +24,13 @@ function statusLine(session: Session | null, options: Options): string {
           : t('status_count_limited', [s.count, s.limit]);
       return `${t('status_next_in', [remain])} · ${count}`;
     }
-    case 'paused':
-      return `${t('status_paused')} · ${t('status_count', [s.count])}`;
+    case 'paused': {
+      // ADR-034：手动暂停要显示"停在几秒"，让用户知道继续后会从哪接着数
+      const base = `${t('status_paused')} · ${t('status_count', [s.count])}`;
+      return s.remainSeconds === undefined
+        ? base
+        : `${base} · ${t('status_paused_remain', [s.remainSeconds])}`;
+    }
     case 'waiting':
       return t('status_waiting_restart', [s.seconds]);
     default:

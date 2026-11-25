@@ -190,7 +190,7 @@
 | `stable` | **始终稳定**，输入框有没有焦点/内容都不影响 |
 | `hold-input` | 输入框**占用中**就暂停（不刷新、不推进），**解除后自动恢复** |
 
-**"占用"的判定**（`src/lib/input-hold.ts`，任一成立）：
+**"占用"的判定**（`src/lib/input-hold.ts`，任一成立；**readOnly / disabled 一律不算**，ADR-033）：
 1. `document.activeElement` 是 input / textarea / contenteditable（且非 disabled/readOnly）
 2. 任意文本类 input（text/search/email/url/tel/password/number）或 textarea 值非空白
 3. 任意 contenteditable 区块有非空白内容
@@ -209,6 +209,18 @@
 
 **手动暂停 vs 占用暂停**：手动暂停会清掉 `waitReason`，所以占用解除不会把手动暂停的会话
 自动恢复 —— 两者语义要分开。
+### 4.3.2 暂停 / 继续（ADR-034）
+
+| 状态 | 面板状态行 | 徽章 |
+| --- | --- | --- |
+| 未运行 | `未运行` | 空 |
+| 运行中 | `N 秒后刷新 · 第 X 次` | 倒计时数字 |
+| **手动暂停** | `已暂停 · 第 X 次 · **剩余 Y 秒**` | `II` |
+| 输入框占用暂停 | `已暂停 · 第 X 次`（无剩余） | `II` |
+
+- **手动暂停**记住剩余（`session.pausedRemainMs`），**继续从那个数字接着数**，不立即刷新。
+- **输入框占用暂停**不记剩余；解除后按新一轮重新计时（ADR-032 语义：避免刚离开输入框就刷新）。
+  两者用不同 `waitReason` / 字段区分，互不串味。
 ### 4.4 不做（但 ARP 有）的行
 
 - 防止重新提交表单（premium，`options-interaction-*` 截图中间那行）—— OQ-3

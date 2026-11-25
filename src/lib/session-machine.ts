@@ -22,14 +22,23 @@ export function canPause(status: SessionStatus): boolean {
 export type SummaryKind =
   | { kind: 'idle' }
   | { kind: 'running'; count: number; limit: number | null }
-  | { kind: 'paused'; count: number }
+  /** 暂停中：带出剩余秒数（ADR-034：暂停要记住倒计时到哪） */
+  | { kind: 'paused'; count: number; remainSeconds?: number }
   | { kind: 'waiting'; seconds: number };
 
 export function summarize(session: Session | null, limit: number | null): SummaryKind {
   if (!session) return { kind: 'idle' };
   switch (session.status) {
     case 'pause':
-      return { kind: 'paused', count: session.count };
+      return {
+        kind: 'paused',
+        count: session.count,
+        // 手动暂停才有剩余时间；输入框占用暂停（input-hold）没有
+        remainSeconds:
+          session.pausedRemainMs === undefined
+            ? undefined
+            : Math.max(0, Math.round(session.pausedRemainMs / 1000)),
+      };
     case 'wait':
       return { kind: 'waiting', seconds: Math.max(0, Math.round(session.delayMs / 1000)) };
     case 'start':

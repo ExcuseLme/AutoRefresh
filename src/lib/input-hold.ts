@@ -49,14 +49,23 @@ function isEditableFocus(el: Element | null): boolean {
  *   - `textarea` → `value`
  *   - `contenteditable` → `textContent`
  *
- * checkbox / radio / file / range 等不算（它们的"内容"不是文本，用户也清不掉）。
+ * **`readOnly` 必须视为"没有内容"**（ADR-033）。这是 Bitbucket / GitLab 这类页面的实际坑：
+ * 它们用一个 `readonly` 的 `<input class="clone-url-input">` 展示 clone 地址，
+ * 用户既不能清空也不能编辑它 —— 但它的 `value` 又永远是满的。
+ * 如果把它算作"有内容"，倒计时会**永久暂停**，用户看到的就是"焦点不在输入框、也没有任何
+ * 我填的内容，却一直暂停"。
+ *
+ * 判据不是"有没有值"，而是**"用户能不能把它清掉"**：
+ *   readOnly / disabled 的输入框用户清不掉 ⇒ 不该由它触发暂停。
+ *
+ * checkbox / radio / file / range 同理不算（它们的"内容"不是文本）。
  */
 function hasContent(el: Element): boolean {
   if (el instanceof HTMLTextAreaElement) {
-    return el.disabled ? false : el.value.trim().length > 0;
+    return el.disabled || el.readOnly ? false : el.value.trim().length > 0;
   }
   if (el instanceof HTMLInputElement) {
-    if (el.disabled) return false;
+    if (el.disabled || el.readOnly) return false;
     return TEXT_LIKE_INPUT_TYPES.has(inputTypeOf(el)) ? el.value.trim().length > 0 : false;
   }
   if ((el as HTMLElement).isContentEditable) {
@@ -72,8 +81,12 @@ const MAX_SCAN = 5000;
  * 当前文档是否"输入框占用中"。
  *
  * 成立条件（任一）：
- *   - `document.activeElement` 是输入类控件（input / textarea / contenteditable）
- *   - 任意文本类输入框**或** contenteditable 区块有非空白内容
+ *   - `document.activeElement` 是**可编辑**的输入类控件（非 disabled / readOnly）
+ *   - 任意**可编辑**文本类输入框 / textarea / contenteditable 区块有非空白内容
+ *
+ * 关键：`readOnly` / `disabled` 的输入框两边都排除。它们是"展示用"的
+ * （典型：Bitbucket 的 clone URL 输入框），用户既不能编辑也不能清空，
+ * 算进来会让倒计时永久暂停（ADR-033）。
  */
 export function computeInputHold(doc: Document): boolean {
   if (isEditableFocus(doc.activeElement)) return true;

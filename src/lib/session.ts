@@ -39,6 +39,16 @@ export type Session = {
   delayMs: number;
   /** 上一轮等待毫秒数（avoidRepeatRandom 用） */
   prevDelayMs: number;
+  /**
+   * 暂停时剩下的毫秒数（ADR-034）。
+   *
+   * 用户要求：点「暂停」后要**记住当前倒计时到哪**，点「继续」从那个数字接着数，
+   * 而不是重新计一整轮、也不是立刻刷新。
+   *
+   * 只由**手动暂停**写入。输入框占用那种自动暂停不走这个字段 ——
+   * 它按 ADR-032 的既定语义"解除后重新计一整轮"（避免刚离开输入框就被刷新）。
+   */
+  pausedRemainMs?: number;
   /** status==='wait' 时的原因 */
   waitReason?: WaitReason;
   /**

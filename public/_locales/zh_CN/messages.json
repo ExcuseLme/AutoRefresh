@@ -230,6 +230,9 @@
   "status_paused": {
     "message": "已暂停"
   },
+  "status_paused_remain": {
+    "message": "剩余 $1 秒"
+  },
   "status_waiting_restart": {
     "message": "等待 $1 秒后重新开始"
   },
