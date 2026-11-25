@@ -11,7 +11,12 @@
 
 export type IntervalMode = 'fixed' | 'random';
 export type RefreshType = 'full' | 'xhr';
-export type InteractionAction = 'stop' | 'pause' | 'restart';
+/**
+ * ADR-032：只要两档——
+ *   stable      稳定刷新：无视输入框状态，倒计时始终不被打断
+ *   hold-input  输入框占用时持续暂停，解除后恢复自动倒计时
+ */
+export type InteractionMode = 'stable' | 'hold-input';
 export type Redirection = 'follow' | 'canonical';
 /** XHR 模式点一下还是点两下（ADR-020）。按页面存，见 page-selectors.ts */
 export type ClickAction = 'single' | 'double';
@@ -22,7 +27,7 @@ export const FIXED_PRESETS = [3, 6, 10, 60] as const;
 export const MIN_INTERVAL_SECONDS = 1;
 export const MAX_INTERVAL_SECONDS = 86400;
 
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export type Options = {
   schemaVersion: typeof SCHEMA_VERSION;
@@ -44,14 +49,12 @@ export type Options = {
   keepActive: boolean;
   refreshLimitEnabled: boolean;
   refreshLimitCount: number;
-  interactions: boolean;
-  interactionAction: InteractionAction;
-  /** 重新开始前等待秒数，仅 interactionAction==='restart' 时生效 */
-  interactionRestartWait: number;
-  /** ADR-027：只让"输入框内点击/打字"触发交互动作；普通点击/滚动不影响刷新 */
-  interactionInputOnly: boolean;
-  /** 输入框内的点击/打字**不**触发交互动作（interactionInputOnly=false 时才有意义） */
-  ignoreInputField: boolean;
+  /**
+   * ADR-032：用户只有两种需求，所以这里是一个二选一，没有总开关——
+   *   stable      稳定刷新：无视输入框状态，倒计时始终不被打断
+   *   hold-input  输入框占用时持续暂停，解除后恢复自动倒计时
+   */
+  interactionMode: InteractionMode;
   redirection: Redirection;
 };
 
@@ -70,11 +73,7 @@ export const DEFAULT_OPTIONS: Options = {
   keepActive: false,
   refreshLimitEnabled: false,
   refreshLimitCount: 10,
-  interactions: false,
-  interactionAction: 'stop',
-  interactionRestartWait: 5,
-  interactionInputOnly: false,
-  ignoreInputField: true,
+  interactionMode: 'hold-input',
   redirection: 'follow',
 };
 

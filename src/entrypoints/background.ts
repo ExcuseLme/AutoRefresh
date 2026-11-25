@@ -1,4 +1,4 @@
-import { decideInteraction } from '@/lib/interaction';
+import { isInputHoldMode } from '@/lib/interaction';
 import { nextDelayMs } from '@/lib/interval';
 import {
   clearKeepActive,
@@ -81,12 +81,18 @@ export default defineBackground(() => {
 
   // ────────────────────────────────────────────────────────────── 会话动作
 
-  async function broadcastInteraction(enabled: boolean, tabId?: number): Promise<void> {
+  /**
+   * 告诉内容脚本是否需要监视输入框占用（ADR-032）。
+   *
+   * `enabled = interactionMode === 'hold-input'`：`stable` 档完全不关心输入框状态，
+   * 让内容脚本关掉监视可以省掉它每秒的轮询开销。
+   */
+  async function broadcastInputHold(enabled: boolean, tabId?: number): Promise<void> {
     const targets = tabId !== undefined ? [tabId] : [...sessions.keys()];
     await Promise.all(
       targets.map(async (id) => {
         try {
-          await chrome.tabs.sendMessage(id, { type: 'SET_INTERACTION', enabled });
+          await chrome.tabs.sendMessage(id, { type: 'SET_INPUT_HOLD', enabled });
         } catch {
           /* 内容脚本未注入时忽略 */
         }
@@ -275,7 +281,7 @@ export default defineBackground(() => {
 
     await setAutoDiscardable(tabId, false);
     if (options.keepActive) await ensureKeepActive(tabId);
-    await broadcastInteraction(options.interactions, tabId);
+    await broadcastInputHold(isInputHoldMode(options), tabId);
     await updateBadge();
 
     // ADR-005：首轮立即刷新
@@ -290,7 +296,7 @@ export default defineBackground(() => {
     await clearBadge(tabId);
     await clearKeepActive(tabId);
     await setAutoDiscardable(tabId, true);
-    await broadcastInteraction(false, tabId);
+    await broadcastInputHold(false, tabId);
     return { ok: true };
   }
 
@@ -317,6 +323,9 @@ export default defineBackground(() => {
   /** 把会话置为"正在等待下一轮"（不立即刷新） */
   function confirmStarted(s: Session, delayMs: number): void {
     s.status = 'start';
+    // 必须清掉 paused/wait 的原因，否则会话已恢复运行却还挂着 `input-hold` 标记，
+    // 下次占用进入时 `s.status === 'pause'` 判断会走错分支（ADR-032）。
+    delete s.waitReason;
     s.prevDelayMs = s.delayMs;
     s.delayMs = delayMs;
     s.armedAt = Date.now();
@@ -397,33 +406,41 @@ export default defineBackground(() => {
 
   // ────────────────────────────────────────────────────────────── 交互
 
-  async function onInteraction(tabId: number, isInput: boolean): Promise<void> {
+  /**
+   * 输入框占用状态变化（ADR-032）。
+   *
+   * 语义是**持续状态**而不是一次性事件：
+   *   held=true  ⇒ 暂停倒计时（不刷新、不推进），保留 count 与已过时间
+   *   held=false ⇒ 从当前时刻**重新开始**一轮完整间隔
+   *
+   * 为什么解除后重新计时而不是恢复剩余时间：
+   *   用户要的是"解除占用后恢复自动倒计时刷新"。若只补剩余 2 秒就刷新，
+   *   用户刚离开输入框、页面还没稳定就刷新，观感是"刚打字完就被刷新"。
+   *   重新计一整轮更符合"恢复正常的自动刷新节奏"。
+   *
+   * 只在 `hold-input` 档生效；`stable` 档 SW 根本不会收到 `INPUT_HOLD`
+   * （内容脚本的监视器按档位开关）。
+   */
+  async function onInputHold(tabId: number, held: boolean): Promise<void> {
     await ensureReady();
     const s = sessions.get(tabId);
-    if (!s || !acceptsInteraction(s.status)) return;
+    if (!s) return;
 
-    const decision = decideInteraction(options, isInput);
-    if (!decision) return;
+    if (held) {
+      /* 进入占用：暂停倒计时。已 pause（用户手动暂停）就不要覆盖其状态 */
+      if (s.status === 'pause') return;
+      s.status = 'pause';
+      s.waitReason = 'input-hold';
+      s.prevDelayMs = s.delayMs;
+      await persist();
+      await disarmTimer(tabId);
+      await updateBadge();
+      return;
+    }
 
-    switch (decision.action) {
-      case 'pause':
-        await pause(tabId);
-        return;
-      case 'restart': {
-        s.status = 'wait';
-        s.waitReason = 'interaction';
-        s.delayMs = Math.max(0, decision.waitSeconds) * 1000;
-        s.armedAt = Date.now();
-        s.timerToken = token();
-        await persist();
-        await armTimer(tabId, s.timerToken, s.delayMs);
-        await updateBadge();
-        return;
-      }
-      case 'stop':
-      default:
-        await stop(tabId);
-        return;
+    /* 占用解除：只有"因占用而暂停"的会话才恢复；手动暂停的保持暂停 */
+    if (s.status === 'pause' && s.waitReason === 'input-hold') {
+      confirmStarted(s, nextDelayMs(options, s.prevDelayMs));
     }
   }
 
@@ -491,9 +508,9 @@ export default defineBackground(() => {
     }
 
     // content → SW
-    if (msg?.type === 'INTERACTION') {
+    if (msg?.type === 'INPUT_HOLD') {
       const tabId = sender.tab?.id;
-      if (tabId !== undefined) void onInteraction(tabId, (msg as ContentEvent & { isInput: boolean }).isInput);
+      if (tabId !== undefined) void onInputHold(tabId, (msg as ContentEvent & { held: boolean }).held);
       sendResponse({ ok: true });
       return false;
     }
@@ -503,7 +520,7 @@ export default defineBackground(() => {
         void (async () => {
           const s = sessions.get(tabId);
           if (s && options?.keepActive) await ensureKeepActive(tabId);
-          if (s) await broadcastInteraction(options?.interactions ?? false, tabId);
+          if (s) await broadcastInputHold(isInputHoldMode(options), tabId);
         })();
       }
       sendResponse({ ok: true });
@@ -624,13 +641,13 @@ export default defineBackground(() => {
         }
         options = result.options;
         await setOptions(options);
-        // 开关改动即时生效：keep-active / interactions 需要同步到内容脚本
-        if (patch.keepActive !== undefined || patch.interactions !== undefined) {
+        // 开关改动即时生效：keep-active / 输入框占用监视 需要同步到内容脚本
+        if (patch.keepActive !== undefined || patch.interactionMode !== undefined) {
           for (const tabId of sessions.keys()) {
             if (options.keepActive) await ensureKeepActive(tabId);
             else await clearKeepActive(tabId);
           }
-          await broadcastInteraction(options.interactions);
+          await broadcastInputHold(isInputHoldMode(options));
         }
         sendResponse({ ok: true, options });
       })();

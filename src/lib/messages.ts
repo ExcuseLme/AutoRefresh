@@ -66,11 +66,14 @@ export type ContentCommand =
   | { type: 'PICKER_START' }
   | { type: 'PICKER_STOP' }
   | { type: 'SET_INTERACTION'; enabled: boolean }
+  /** 内容脚本持续上报「输入框占用」状态（ADR-032） */
+  | { type: 'SET_INPUT_HOLD'; enabled: boolean }
   | { type: 'CLEAR_KEEP_ACTIVE' };
 
 /** content script → SW（走 chrome.runtime.sendMessage） */
 export type ContentEvent =
-  | { type: 'INTERACTION'; isInput: boolean }
+  /** ADR-032：输入框占用状态变化（true=占用中，false=已解除） */
+  | { type: 'INPUT_HOLD'; held: boolean }
   | { type: 'CONTENT_READY' }
   /** 拾取成功：带回生成的 selector */
   | { type: 'PICKER_RESULT'; selector: string; preview: string }

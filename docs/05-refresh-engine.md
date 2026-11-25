@@ -205,25 +205,27 @@ if (!(!n?.status || t?.isInput && i.ignoreInputField) && Gh(n.status) && r?.doma
 - `pause`：保留 `count`，`prevStatus` 记录，`RESUME` 时回到原状态（ARP `mS`/`hS`/`gS`）。
 - `stop`：清会话（ARP 还会 `markRecentlyStopped` 以便"最近停止"列表，本扩展不需要该列表，故只清理）。
 
-### 5.2.0 谁算"用户交互"（ADR-028）
+### 5.2.0 交互打断（ADR-032）
 
-`decideInteraction(opt, isInput)` 的第一层过滤是**触发范围**（`triggerScope`），三档**互斥**：
+交互不再是"每次点击触发一次动作"，而是**输入框占用状态**驱动：
 
-| 档位 | 存储字段 | 判定 |
-| --- | --- | --- |
-| `all` | `{inputOnly:false, ignoreInput:false}` | 都触发 |
-| `outside-input` | `{inputOnly:false, ignoreInput:true}` | `isInput` 时不触发（**默认档**） |
-| `inside-input-only` | `{inputOnly:true}` | `isInput` 时才触发；普通点击/滚动不影响倒计时 |
+| `interactionMode` | 行为 |
+| --- | --- |
+| `stable` | 内容脚本**不启动**监视器，SW 收不到任何 `INPUT_HOLD`，倒计时始终稳定 |
+| `hold-input` | 内容脚本监视输入框占用，状态**变化**时上报 `INPUT_HOLD` |
 
-UI 上是三段 `SegmentedControl`，所以**不存在"两个都开"的非法态**。
-存储层仍沿用两个布尔字段（不改 schema），由 `scopePatch` / `triggerScope` 双向映射。
+内容脚本（`content.ts`）三条腿保证状态不丢：
+1. `focusin` / `focusout` —— 光标进出（覆盖 Tab、程序化 focus）
+2. `input` / `change` —— 内容变化（覆盖粘贴、脚本赋值、自动填充）
+3. **1s 兜底轮询** —— 覆盖不派发上述事件的场景（脚本直接改 `value`）
 
-`triggerScope` 映射时 `interactionInputOnly` 优先，用于兼容 ADR-027 期间可能产生的
-`{true,true}` 历史数据 —— 那种数据读出来是 `inside-input-only`，行为是正确的。
+只在状态变化时上报，避免每秒打 SW。判定逻辑在 `src/lib/input-hold.ts` 的 `computeInputHold(doc)`。
 
-调用方（`background.ts` 的 `onInteraction`）只判断 `target` 是不是输入类元素
-（`input` / `textarea` / `contenteditable`），滚动与普通点击按 `isInput=false` 传进来。
-
+SW 侧（`onInputHold`）：
+- `held=true` ⇒ `status='pause'` + `waitReason='input-hold'` + `disarmTimer`
+- `held=false` ⇒ 仅当 `waitReason==='input-hold'` 时 `confirmStarted(下一轮间隔)`
+  （**重新计一整轮**，不补剩余 —— 刚离开输入框就刷新观感很差）
+- **手动暂停**会清掉 `waitReason` ⇒ 占用解除不会自动恢复手动暂停的会话
 ### 5.2.1 restart 的等待秒数怎么取（ADR-026）
 
 `decideInteraction` 里的 `waitSeconds` 不直接取 `interactionRestartWait`，而是走

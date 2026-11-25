@@ -2,24 +2,19 @@ import { useState } from 'react';
 import { SegmentedControl, Select, SwitchRow } from './ui';
 
 import { t } from '@/lib/i18n';
-import { triggerScope, type TriggerScope, scopePatch } from '@/lib/interaction';
+import type { Options, InteractionMode, Redirection } from '@/lib/options';
 import { parseStrictInt } from '@/lib/number-input';
-import type { InteractionAction, Options, Redirection } from '@/lib/options';
+
 import { readOptionsCollapsed, writeOptionsCollapsed } from '@/lib/storage';
 
 type PatchFn = (next: Partial<Options>) => Promise<{ ok: boolean; code?: string }>;
 
-/** 触发范围三档（ADR-028）。互斥由枚举本身保证，不存在"两个都开"的非法态 */
-const SCOPE_ITEMS: { value: TriggerScope; labelKey: string; descKey: string }[] = [
-  { value: 'all', labelKey: 'scope_opt_all', descKey: 'scope_all' },
-  { value: 'outside-input', labelKey: 'scope_opt_outside', descKey: 'scope_outside_input' },
-  { value: 'inside-input-only', labelKey: 'scope_opt_inside', descKey: 'scope_inside_input_only' },
-];
-
-const ACTIONS: { value: InteractionAction; labelKey: string; danger?: boolean }[] = [
-  { value: 'stop', labelKey: 'act_stop', danger: true },
-  { value: 'pause', labelKey: 'act_pause' },
-  { value: 'restart', labelKey: 'act_restart' },
+/**
+ * 交互模式（ADR-032）：只有两档，正好对应用户的两种需求。
+ */
+const MODE_ITEMS: { value: InteractionMode; labelKey: string; descKey: string }[] = [
+  { value: 'stable', labelKey: 'mode_stable', descKey: 'mode_desc_stable' },
+  { value: 'hold-input', labelKey: 'mode_hold_input', descKey: 'mode_desc_hold_input' },
 ];
 
 export function OptionsSection({ options, patch }: { options: Options; patch: PatchFn }) {
@@ -30,8 +25,6 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
     setCollapsed(next);
     writeOptionsCollapsed(next);
   };
-
-  const scope = triggerScope(options);
 
   return (
     <section className="flex flex-col gap-1">
@@ -103,100 +96,31 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
               </div>
             ) : null}
           </SwitchRow>
-
           {/*
-           * ADR-027：把两个触发范围子选项收进「用户交互时的刷新行为」的卡片内，
-           * 视觉上与父项连成一组（同一张卡片 + 左侧竖线表示从属），
-           * 不再是平级的两个独立卡片。
+           * 交互模式（ADR-032）：改成二选一，不再是「开关 + 三选一动作 + 触发范围」三层。
+           * 用户明确只有两种需求：
+           *   stable      无视输入框状态，倒计时始终稳定
+           *   hold-input  输入框占用（有焦点或有内容）时持续暂停，解除后自动恢复
            */}
-          <SwitchRow
-            icon={<HandIcon />}
-            title={t('opt_interactions')}
-            description={t('opt_desc_interactions')}
-            checked={options.interactions}
-            onChange={(v) => void patch({ interactions: v })}
-          >
-            {options.interactions ? (
-              <div className="flex flex-col gap-1">
-                {/* 动作三选一 */}
-                <div className="flex flex-wrap items-center gap-1" role="group" aria-label={t('opt_interactions')}>
-                  {ACTIONS.map((a) => {
-                    const active = options.interactionAction === a.value;
-                    return (
-                      <button
-                        key={a.value}
-                        type="button"
-                        aria-pressed={active}
-                        onClick={() => void patch({ interactionAction: a.value })}
-                        className={[
-                          'rounded border px-2 py-0.5 text-[10.5px] font-medium leading-tight transition',
-                          active && a.danger
-                            ? 'border-rose-300 bg-rose-50 text-rose-600'
-                            : active
-                              ? 'border-[var(--accent-border)] bg-[var(--accent)] text-[var(--accent-foreground)]'
-                              : 'border-[var(--border)] bg-[var(--secondary)] text-[var(--muted-foreground)]',
-                        ].join(' ')}
-                      >
-                        {t(a.labelKey)}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                {options.interactionAction === 'restart' ? (
-                  /* ADR-026：固定档直接用当前刷新间隔，不提供输入框；
-                     只有随机档（没有"当前间隔"这个单一数值）才给自定义输入 */
-                  options.intervalMode === 'fixed' ? (
-                    <p className="text-[10.5px] leading-tight text-[var(--muted-foreground)]">
-                      {t('act_restart_wait_fixed', [options.fixedSeconds])}
-                    </p>
-                  ) : (
-                    <div className="flex items-center justify-between gap-2">
-                      <span className="text-[10.5px] text-[var(--muted-foreground)]">{t('act_restart_wait')}</span>
-                      <div className="flex items-center gap-1">
-                        <IntField
-                          value={options.interactionRestartWait}
-                          min={0}
-                          ariaLabel={t('aria_restart_wait')}
-                          name="interactionRestartWait"
-                          onCommit={(v) => void patch({ interactionRestartWait: v })}
-                        />
-                        <span className="text-[10.5px] text-[var(--muted-foreground)]">{t('act_restart_wait_unit')}</span>
-                      </div>
-                    </div>
-                  )
-                ) : null}
-
-                {/*
-                 * 触发范围（ADR-028）：三段互斥，用 SegmentedControl 而不是两个开关。
-                 *
-                 * 为什么不用两个开关：2 个布尔 = 4 种组合，但只有 3 种合法（两端/仅框外/仅框内），
-                 * `{inputOnly:true, ignoreInputField:true}` 那个组合是冗余非法态。
-                 * 无论怎么调互斥规则都只是在掩盖它（优先级 / 强制关另一个 / 置灰），
-                 * 用一个三档枚举就天然互斥、没有非法态、也不需要"记住上一档"。
-                 *
-                 * 映射到已有字段（不改 schema）：
-                 *   all    → { interactionInputOnly: false, ignoreInputField: false }
-                 *   outside→ { interactionInputOnly: false, ignoreInputField: true }
-                 *   inside → { interactionInputOnly: true }（ignoreInputField 不参与判定）
-                 */}
-                <div className="ml-1 flex flex-col gap-1 border-l-2 border-[var(--border)] pl-2">
-                  <p className="text-[10px] font-medium leading-tight text-[var(--muted-foreground)]">
-                    {t('opt_trigger_scope')}
-                  </p>
-                  <SegmentedControl
-                    value={scope}
-                    items={SCOPE_ITEMS.map((s) => ({ value: s.value, label: t(s.labelKey) }))}
-                    onChange={(v) => void patch(scopePatch(v as TriggerScope))}
-                    ariaLabel={t('opt_trigger_scope')}
-                  />
-                  <p className="text-[10px] leading-tight text-[var(--muted-foreground)]">
-                    {t(SCOPE_ITEMS.find((s) => s.value === scope)?.descKey ?? 'scope_all')}
-                  </p>
-                </div>
-              </div>
-            ) : null}
-          </SwitchRow>
+          <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5">
+            <div className="mb-1 flex items-center gap-2">
+              <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded bg-[var(--secondary)] text-[var(--muted-foreground)] [&>svg]:h-3 [&>svg]:w-3">
+                <HandIcon />
+              </span>
+              <p className="min-w-0 flex-1 truncate text-[12px] font-medium text-[var(--foreground)]">
+                {t('opt_interactions')}
+              </p>
+            </div>
+            <SegmentedControl
+              value={options.interactionMode}
+              items={MODE_ITEMS.map((m) => ({ value: m.value, label: t(m.labelKey) }))}
+              onChange={(v) => void patch({ interactionMode: v as InteractionMode })}
+              ariaLabel={t('opt_interactions')}
+            />
+            <p className="mt-1 text-[10px] leading-tight text-[var(--muted-foreground)]">
+              {t(MODE_ITEMS.find((m) => m.value === options.interactionMode)?.descKey ?? 'mode_desc_stable')}
+            </p>
+          </div>
 
           {/* 重定向：标题行 + 下拉 + 说明压成两行（原来占三行 + 大内边距） */}
           <div className="rounded-lg border border-[var(--border)] bg-[var(--card)] px-2.5 py-1.5">

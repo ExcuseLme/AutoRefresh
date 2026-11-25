@@ -4,6 +4,7 @@ import { describeElement, simulateClick } from '@/lib/dom-click';
 import { startPicker, stopPicker } from '@/lib/picker';
 import { highlightElement } from '@/lib/highlight';
 import { KEEP_ACTIVE_STORAGE_KEY } from '@/lib/keep-active';
+import { computeInputHold } from '@/lib/input-hold';
 
 /**
  * 内容脚本（ISOLATED world）。职责仅三件（docs/05 §5、§6.2、§7）：
@@ -25,14 +26,6 @@ export default defineContentScript({
       return Boolean(target.closest(ourUiSelector));
     }
 
-    function activeElementIsInput(): boolean {
-      const el = document.activeElement;
-      if (!el) return false;
-      const tag = el.tagName;
-      if (tag === 'INPUT' || tag === 'TEXTAREA') return true;
-      return (el as HTMLElement).isContentEditable === true;
-    }
-
     function send(msg: ContentEvent): void {
       try {
         void chrome.runtime.sendMessage(msg).catch(() => {
@@ -43,31 +36,60 @@ export default defineContentScript({
       }
     }
 
-    let interactionEnabled = false;
-
     /**
-     * 交互上报。对齐 ARP `script.js` 的 `wT` / `TT`：
-     * - 必须 `e.isTrusted`：过滤我们自己的 AUTOCLICK 与第三方合成事件
-     * - isInput 取 `document.activeElement`，不是 event.target
+     * 输入框占用监视（ADR-032）。
+     *
+     * 这是**状态**而不是事件：用户要的是"输入框被占用的整段时间都不刷新"，
+     * 而不是"每次点击/按键打断一次"。旧实现按事件上报，语义与需求不符，已废弃。
+     *
+     * 三条腿保证状态不丢：
+     *   1. `focusin` / `focusout` —— 光标进出输入框（覆盖 Tab、程序化 focus）
+     *   2. `input` / `change` —— 内容变化（覆盖粘贴、脚本赋值、自动填充）
+     *   3. **兜底轮询**（1s）—— 覆盖不上报上述事件的场景（如脚本直接改 `value`）
+     *
+     * 只在状态**变化**时上报，避免每秒都把 SW 与 offscreen 打一遍。
      */
-    function onClickCapture(e: MouseEvent): void {
-      if (!interactionEnabled) return;
-      if (!e.isTrusted) return;
-      if (isOurUi(e.target)) return;
-      send({ type: 'INTERACTION', isInput: activeElementIsInput() });
+    let inputHoldEnabled = false;
+    let lastHeld = false;
+    let holdPollTimer = 0;
+
+    function reportInputHold(force = false): void {
+      const held = computeInputHold(document);
+      if (!force && held === lastHeld) return;
+      lastHeld = held;
+      send({ type: 'INPUT_HOLD', held });
     }
 
-    function onKeyDown(e: KeyboardEvent): void {
-      if (!interactionEnabled) return;
-      if (!e.isTrusted) return;
-      if (isOurUi(e.target)) return;
-      // ARP 忽略组合键：Ctrl/Alt/Meta 属于快捷键而非"使用页面"
-      if (e.ctrlKey || e.altKey || e.metaKey) return;
-      send({ type: 'INTERACTION', isInput: activeElementIsInput() });
+    /** 事件到达后按微任务重算（此时 DOM 的 value / activeElement 已更新） */
+    function onHoldSignal(): void {
+      if (!inputHoldEnabled) return;
+      Promise.resolve().then(() => {
+        if (inputHoldEnabled) reportInputHold();
+      });
     }
 
-    document.addEventListener('click', onClickCapture, true);
-    document.addEventListener('keydown', onKeyDown);
+    function startInputHoldMonitor(): void {
+      if (holdPollTimer) return;
+      document.addEventListener('focusin', onHoldSignal, true);
+      document.addEventListener('focusout', onHoldSignal, true);
+      document.addEventListener('input', onHoldSignal, true);
+      document.addEventListener('change', onHoldSignal, true);
+      // 兜底轮询：有些页面用脚本改 value 而不派发 input 事件
+      holdPollTimer = window.setInterval(() => reportInputHold(), 1000);
+      reportInputHold(true);
+    }
+
+    function stopInputHoldMonitor(): void {
+      document.removeEventListener('focusin', onHoldSignal, true);
+      document.removeEventListener('focusout', onHoldSignal, true);
+      document.removeEventListener('input', onHoldSignal, true);
+      document.removeEventListener('change', onHoldSignal, true);
+      if (holdPollTimer) {
+        clearInterval(holdPollTimer);
+        holdPollTimer = 0;
+      }
+      lastHeld = false;
+    }
 
     /**
      * XHR 模式：模拟一次"真实点击"来触发页面自身的请求（ADR-009 / ADR-015 / ADR-020）
@@ -167,8 +189,10 @@ export default defineContentScript({
           sendResponse({ ok: true });
           return false;
         }
-        case 'SET_INTERACTION': {
-          interactionEnabled = msg.enabled;
+        case 'SET_INPUT_HOLD': {
+          inputHoldEnabled = msg.enabled;
+          if (inputHoldEnabled) startInputHoldMonitor();
+          else stopInputHoldMonitor();
           sendResponse({ ok: true });
           return false;
         }

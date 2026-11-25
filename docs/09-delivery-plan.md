@@ -348,6 +348,21 @@ T-43（浏览器重启）、T-46（与 ARP 并存）。这三项的代码路径�
 | 页面导航后不残留旧值 | ✅ | 预置 `TEST` 后 reload ⇒ 徽章被重设为倒计时值 |
 | 单测覆盖 | ✅ | `tests/badge.test.ts` 14 例（秒数/分钟边界、截断、暂停/失败/wait、到期不为负） |
 
+### 交互两档语义（ADR-032，第十三轮，v0.4.0，schema v4）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| 全部清空、无焦点 ⇒ 正常倒计时 | ✅ | `status=start` / `badge=1m` |
+| 光标在 input ⇒ 暂停 | ✅ | `status=pause` / `waitReason=input-hold` / `badge=II` |
+| blur 且内容为空 ⇒ 恢复 | ✅ | `status=start` / `waitReason` 清空 / `badge=1m` |
+| 无焦点但输入框有内容 ⇒ 暂停 | ✅ | `status=pause` / `badge=II`（用户要的"有内容也打断"） |
+| 清空内容 ⇒ 恢复 | ✅ | `status=start` / `badge=1m` |
+| `stable` 档 + 焦点 + 有内容 ⇒ 不暂停 | ✅ | `status=start` / `badge=1m` |
+| 单测：占用判定 12 例 | ✅ | `tests/input-hold.test.ts`（焦点/内容/contenteditable/checkbox/disabled/readOnly/空白） |
+| 单测：两档判定 4 例 | ✅ | `tests/interaction-scope.test.ts` |
+| schema 迁移 v3→v4 | ✅ | 旧「仅框内」⇒ `hold-input`；其余有 v3 数据 ⇒ `stable`；空存档 ⇒ 默认值 |
+| 迁移后字段清理 | ✅ | `interactions`/`interactionAction`/`interactionRestartWait`/`interactionInputOnly`/`ignoreInputField` 全部不在 DEFAULT_OPTIONS |
+
 ### 回归
 
 | 用例 | 结果 | 证据 |

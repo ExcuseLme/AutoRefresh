@@ -11,7 +11,8 @@ import { pageKeyOf } from './page-selectors';
 
 export type SessionStatus = 'start' | 'pause' | 'wait';
 
-export type WaitReason = 'interaction';
+/** ADR-032：pause 的原因。null/缺省 = 用户手动暂停；input-hold = 输入框占用自动暂停 */
+export type WaitReason = 'interaction' | 'input-hold';
 
 export type Session = {
   tabId: number;

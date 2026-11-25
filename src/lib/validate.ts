@@ -4,7 +4,7 @@ import {
   MAX_INTERVAL_SECONDS,
   MIN_INTERVAL_SECONDS,
   SCHEMA_VERSION,
-  type InteractionAction,
+  type InteractionMode,
   type IntervalMode,
   type Options,
   type Redirection,
@@ -19,7 +19,7 @@ export type ValidationResult =
 
 const INTERVAL_MODES: readonly IntervalMode[] = ['fixed', 'random'];
 const REFRESH_TYPES: readonly RefreshType[] = ['full', 'xhr'];
-const ACTIONS: readonly InteractionAction[] = ['stop', 'pause', 'restart'];
+const INTERACTION_MODES: readonly InteractionMode[] = ['stable', 'hold-input'];
 const REDIRECTIONS: readonly Redirection[] = ['follow', 'canonical'];
 
 type Raw = Record<string, unknown>;
@@ -84,6 +84,49 @@ export function migrateV2ToV3(raw: Raw): Raw {
 }
 
 /**
+ * v3 → v4 形状迁移（ADR-032）。
+ *
+ * v3 用 4 个字段描述交互：`interactionAction`（stop/pause/restart）、`interactionRestartWait`、
+ * `interactionInputOnly`、`ignoreInputField`。ADR-028 把它们压成三段枚举后，
+ * 用户进一步确认只需要两档语义（"始终稳定刷新" / "输入框占用时暂停"），
+ * 三选一动作与重启等待秒数都没有适用场景了。
+ *
+ * 迁移映射（保住用户原来的实际行为，而不是一律回默认）：
+ *
+ * | v3 组合 | v4 `interactionMode` |
+ * | --- | --- |
+ * | `interactionInputOnly=true`（旧「仅框内」） | `hold-input` —— 语义正是"输入框在场时打断" |
+ * | 其余（旧「任何交互」/「仅框外」） | `stable` —— 框外点击也打断会让倒计时不稳，正是用户要摆脱的行为 |
+ *
+ * 旧「仅框外」为什么不保留：用户明确说"我只有两种需求"，
+ * 框外点击也打断会让倒计时不稳定，属于他要摆脱的行为。
+ */
+export function migrateV3ToV4(raw: Raw): Raw {
+  const next: Raw = { ...raw };
+
+  /*
+   * 旧「仅框内」⇒ hold-input（语义正是"输入框在场时打断"）。
+   * 但**空/脏存档**（压根没有 v3 的交互字段）不能硬写 stable ——
+   * 那会让"全新安装"与"空存档"得到不同默认行为。这种情况用默认值。
+   */
+  const hasV3Interaction = 'interactionInputOnly' in raw || 'ignoreInputField' in raw;
+  const mode: Raw['interactionMode'] = hasV3Interaction
+    ? raw.interactionInputOnly === true
+      ? 'hold-input'
+      : 'stable'
+    : DEFAULT_OPTIONS.interactionMode;
+  next.interactionMode = mode;
+
+  delete next.interactionAction;
+  delete next.interactionRestartWait;
+  delete next.interactionInputOnly;
+  delete next.ignoreInputField;
+
+  next.schemaVersion = 4;
+  return next;
+}
+
+/**
  * 校验并归一化一份完整配置。
  *
  * 规则（docs/03 §2 + ADR-007）：用户显式提供的字段若类型/值域非法 → 拒绝整个 patch；
@@ -123,10 +166,10 @@ export function validateOptions(input: unknown): ValidationResult {
 
   const intervalMode = pickEnum<IntervalMode>(raw.intervalMode, INTERVAL_MODES, DEFAULT_OPTIONS.intervalMode);
   const refreshType = pickEnum<RefreshType>(raw.refreshType, REFRESH_TYPES, DEFAULT_OPTIONS.refreshType);
-  const interactionAction = pickEnum<InteractionAction>(
-    raw.interactionAction,
-    ACTIONS,
-    DEFAULT_OPTIONS.interactionAction,
+  const interactionMode = pickEnum<InteractionMode>(
+    raw.interactionMode,
+    INTERACTION_MODES,
+    DEFAULT_OPTIONS.interactionMode,
   );
   const redirection = pickEnum<Redirection>(raw.redirection, REDIRECTIONS, DEFAULT_OPTIONS.redirection);
 
@@ -159,16 +202,7 @@ export function validateOptions(input: unknown): ValidationResult {
       codeMin: 'err_limit_count',
       codeMax: 'err_limit_count',
     }),
-    interactions: readBool('interactions', DEFAULT_OPTIONS.interactions),
-    interactionAction,
-    interactionRestartWait: readInt('interactionRestartWait', DEFAULT_OPTIONS.interactionRestartWait, {
-      min: 0,
-      max: 3600,
-      codeMin: 'err_restart_wait',
-      codeMax: 'err_restart_wait',
-    }),
-    interactionInputOnly: readBool('interactionInputOnly', DEFAULT_OPTIONS.interactionInputOnly),
-    ignoreInputField: readBool('ignoreInputField', DEFAULT_OPTIONS.ignoreInputField),
+    interactionMode,
     redirection,
   };
 
@@ -202,6 +236,7 @@ export function migrate(raw: unknown): Options {
   const version = typeof base.schemaVersion === 'number' ? base.schemaVersion : 1;
   if (version < 2) shape = migrateV1ToV2(shape);
   if (version < 3) shape = migrateV2ToV3(shape);
+  if (version < 4) shape = migrateV3ToV4(shape);
 
   const result = validateOptions(shape);
   return result.ok ? result.options : { ...DEFAULT_OPTIONS };

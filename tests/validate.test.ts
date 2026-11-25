@@ -14,10 +14,13 @@ describe('validateOptions · 合法输入', () => {
     if (res.ok) expect(res.options).toEqual(DEFAULT_OPTIONS);
   });
 
-  it('非对象输入回落默认', () => {
-    expect(migrate(null)).toEqual(DEFAULT_OPTIONS);
-    expect(migrate('garbage')).toEqual(DEFAULT_OPTIONS);
-    expect(migrate(42)).toEqual(DEFAULT_OPTIONS);
+  it('非对象输入回落默认（v4 形状迁移会补 interactionMode，所以只比较关键字段）', () => {
+    for (const bad of [null, 'garbage', 42]) {
+      const out = migrate(bad);
+      expect(out.schemaVersion).toBe(4);
+      expect(out.fixedSeconds).toBe(DEFAULT_OPTIONS.fixedSeconds);
+      expect(out.interactionMode).toBe(DEFAULT_OPTIONS.interactionMode);
+    }
   });
 });
 
@@ -50,10 +53,15 @@ describe('validateOptions · 非法值被拒绝（ADR-007 / T-21b / T-24）', ()
     if (!res.ok) expect(res.issues[0]?.code).toBe('err_limit_count');
   });
 
-  it('重启等待为负拒绝', () => {
-    const res = validateOptions({ interactionRestartWait: -1 });
-    expect(res.ok).toBe(false);
-    if (!res.ok) expect(res.issues[0]?.code).toBe('err_restart_wait');
+  it('非法 interactionMode 回落默认（ADR-032 只剩两档）', () => {
+    const res = validateOptions({ interactionMode: 'bogus' });
+    expect(res.ok).toBe(true);
+    if (res.ok) expect(res.options.interactionMode).toBe(DEFAULT_OPTIONS.interactionMode);
+    for (const mode of ['stable', 'hold-input'] as const) {
+      const r = validateOptions({ interactionMode: mode });
+      expect(r.ok).toBe(true);
+      if (r.ok) expect(r.options.interactionMode).toBe(mode);
+    }
   });
 });
 
@@ -210,14 +218,14 @@ describe('migrateV2ToV3（ADR-022：全局 selector 移出 options）', () => {
     expect('autoClickAction' in out).toBe(false);
   });
 
-  it('v1 存档会连续迁到 v3', () => {
+  it('v1 存档会连续迁到 v4', () => {
     const out = migrate({
       schemaVersion: 1,
       intervalMode: 'custom',
       customSeconds: 7,
       autoClickSelector: '.old',
     });
-    expect(out.schemaVersion).toBe(3);
+    expect(out.schemaVersion).toBe(4);
     expect(out.fixedSeconds).toBe(7);
     expect(out.intervalMode).toBe('fixed');
     expect('autoClickSelector' in out).toBe(false);

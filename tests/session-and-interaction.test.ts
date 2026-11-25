@@ -8,64 +8,13 @@ function session(over: Partial<Session> = {}): Session {
   return { ...createSession(1, 'https://example.com/', 10_000, 'tok-1'), ...over };
 }
 
-describe('decideInteraction（A4 / A6 / A7 / T-13 / T-15 / T-16）', () => {
-  it('总开关关闭时无动作（T-16）', () => {
-    expect(decideInteraction({ ...DEFAULT_OPTIONS, interactions: false }, false)).toBeNull();
-  });
-
-  it('总开关开启时返回三选一动作', () => {
-    const d = decideInteraction(
-      { ...DEFAULT_OPTIONS, interactions: true, interactionAction: 'stop' },
-      false,
-    );
-    expect(d?.action).toBe('stop');
-  });
-
-  it('忽略输入框开启时，输入框内交互被忽略（T-15）', () => {
-    expect(
-      decideInteraction({ ...DEFAULT_OPTIONS, interactions: true, ignoreInputField: true }, true),
-    ).toBeNull();
-  });
-
-  it('忽略输入框关闭时，输入框内交互也生效（T-15b）', () => {
-    const d = decideInteraction(
-      { ...DEFAULT_OPTIONS, interactions: true, ignoreInputField: false, interactionAction: 'pause' },
-      true,
-    );
-    expect(d?.action).toBe('pause');
-  });
-
-  it('restart 在随机档时用自定义等待秒数（T-13c）', () => {
-    const d = decideInteraction(
-      {
-        ...DEFAULT_OPTIONS,
-        interactions: true,
-        interactionAction: 'restart',
-        interactionRestartWait: 5,
-        intervalMode: 'random',
-      },
-      false,
-    );
-    expect(d).toEqual({ action: 'restart', waitSeconds: 5 });
-  });
-
-  it('restart 在固定档时直接用当前固定间隔（ADR-026：不让用户再填数字）', () => {
-    const d = decideInteraction(
-      {
-        ...DEFAULT_OPTIONS,
-        interactions: true,
-        interactionAction: 'restart',
-        interactionRestartWait: 5,
-        intervalMode: 'fixed',
-        fixedSeconds: 30,
-      },
-      false,
-    );
-    // 自定义值 5 被忽略，用固定间隔 30
-    expect(d).toEqual({ action: 'restart', waitSeconds: 30 });
-  });
-});
-
+/**
+ * 会话状态机
+ *
+ * 注意：`decideInteraction` 与「三选一动作 / 重新开始等待」在 ADR-032 里已被删除
+ * （用户确认只要两档语义，不需要 stop/pause/restart 三选一）。
+ * 输入框占用相关的判定改在 `tests/input-hold.test.ts` 与 `tests/interaction-scope.test.ts`。
+ */
 describe('会话状态机', () => {
   it('只有 start/wait 响应交互（T-13b 的 pause 不能被再次交互覆盖）', () => {
     expect(acceptsInteraction('start')).toBe(true);

@@ -529,6 +529,68 @@
   | 300s 间隔 | `4m 4m 4m 4m` —— 首轮刷新后剩 ~290s ⇒ `4m`（截断正确） |
   | 停止刷新 | 徽章清空（`''`） |
   | 页面导航 | 徽章被重设（不会停留在旧值） |
+
+### ADR-032 · 交互只保留两档语义（稳定刷新 / 输入框占用时暂停），schema v3 → v4
+
+- **用户原话**：
+  > "`用户交互时的刷新行为` 的 `仅框内` 似乎没意义了，我只有两种需求
+  > `无视输入框输入状态始终稳定的倒计时刷新` 和
+  > `光标在输入框内或输入框内有任何内容时持续打断刷新直到光标不在任何输入框内且所有输入框内没有内容时才恢复自动倒计时刷新`，
+  > 分别对应 `任何交互` 和 `仅框内`，只需要这两个就够了"
+- **两个语义上的重大修正**（这不是"减一个档位"，而是把交互从**事件**改成**状态**）：
+
+  | | 旧实现（ADR-027/028） | 新实现（ADR-032） |
+  | --- | --- | --- |
+  | 触发单位 | 一次 `click` / `keydown` **事件** | 输入框**占用状态**（持续） |
+  | 效果 | 每次交互触发一次 stop/pause/restart 动作 | 占用**整段时间**都不刷新，解除后恢复 |
+  | 档位 | 三档（任何 / 仅框外 / 仅框内） | **两档**（`stable` / `hold-input`） |
+  | 动作 | 三选一 + 重启等待秒数 | **无**（两档里都不需要） |
+
+  用户说"分别对应任何交互和仅框内"是对的：`stable` = 旧「任何交互」（无视输入框、倒计时稳定），
+  `hold-input` = 旧「仅框内」（但语义从"框内点击触发一次"升级成"占用期间持续暂停"）。
+  中间的「仅框外」被判定为无意义并删除。
+
+- **删除的字段**（schema v4）：`interactions`（总开关，两档枚举自含"关"的语义，不需要单独开关）、
+  `interactionAction`、`interactionRestartWait`、`interactionInputOnly`、`ignoreInputField`。
+  新增 `interactionMode: 'stable' | 'hold-input'`（默认 `hold-input`）。
+  同时删除 i18n 15 个 key（三选一动作、重启等待、三档标签/说明）。
+
+- **"占用"的判定**（`src/lib/input-hold.ts` 的 `computeInputHold(doc)`）：
+  成立条件（任一）
+  1. `document.activeElement` 是 input / textarea / contenteditable（且非 disabled / readOnly）
+  2. 任意文本类 input（text/search/email/url/tel/password/number）或 textarea 的 `value.trim()` 非空
+  3. 任意 contenteditable 区块的 `textContent.trim()` 非空
+
+  刻意排除：`checkbox` / `radio` / `file` / `range` 等——它们的 "value" 不是用户可清空的文本，
+  算进去会让倒计时**永远**暂停。`disabled` 输入框也排除。扫描上限 5000 节点防超大表单卡顿。
+
+- **状态监视的三条腿**（`content.ts`）：
+  1. `focusin` / `focusout` —— 光标进出（覆盖 Tab、程序化 focus）
+  2. `input` / `change` —— 内容变化（覆盖粘贴、脚本赋值、自动填充）
+  3. **1s 兜底轮询** —— 覆盖不派发上述事件的场景（脚本直接改 `value`）
+  只在状态**变化**时上报，避免每秒打 SW。`stable` 档内容脚本**不启动**监视器（省开销）。
+
+- **SW 侧**（`onInputHold`）：
+  - `held=true` ⇒ `status='pause'` + `waitReason='input-hold'` + disarm timer
+  - `held=false` ⇒ 只有 `waitReason==='input-hold'` 的会话才 `confirmStarted(新一轮间隔)`
+  - 恢复时**重新计一整轮**而不是补剩余：用户刚离开输入框、页面还没稳定就刷新，观感很差
+  - 用户**手动暂停**会清掉 `waitReason` ⇒ 占用解除也不会把它自动恢复（区分两种暂停）
+
+- **迁移**（`migrateV3ToV4`）：旧「仅框内」(`interactionInputOnly===true`) ⇒ `hold-input`；
+  其余有 v3 交互数据的 ⇒ `stable`；**空/脏存档** ⇒ 默认值（避免"空存档"与"全新安装"行为不一致）。
+
+- **实测**（本地页面含 2 input + 1 textarea + 1 contenteditable，间隔设 120s 避免刷新干扰）：
+
+  | 场景 | session.status | waitReason | badge |
+  | --- | --- | --- | --- |
+  | 全部清空、无焦点 | `start` | null | `1m` |
+  | focus 到 input A | `pause` | `input-hold` | `II` |
+  | blur（内容为空） | `start` | null | `1m` |
+  | input B 有内容、无焦点 | `pause` | `input-hold` | `II` |
+  | 清空 B | `start` | null | `1m` |
+  | `stable` 档 + 焦点 + 有内容 | `start` | null | `1m`（**不暂停**） |
+
+  单测 `tests/input-hold.test.ts`（12 例）+ `tests/interaction-scope.test.ts`（4 例）。
 ## 2. 开放问题（**已全部关闭**，结论见下表；实现按结论落地）
 
 | ID | 问题 | 结论（用户已确认或已采纳默认） | 落地 |
@@ -592,3 +654,4 @@
 | 2026-11-25 | **ADR-029**（版本号单一真源 + 面板显示版本号；v0.1.0 → v0.2.0） | lead |
 | 2026-11-25 | **ADR-030**（拾取器 sweep 阶段：选中手势不穿透页面；v0.2.0 → v0.2.1） | lead |
 | 2026-11-25 | **ADR-031**（测试选择器滚动+呼吸高亮；图标实时倒计时；v0.2.1 → v0.3.0） | lead |
+| 2026-11-25 | **ADR-032**（交互只留两档：稳定刷新 / 输入框占用时暂停；schema v3→v4；v0.3.0 → v0.4.0） | lead |

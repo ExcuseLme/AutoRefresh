@@ -1,22 +1,4 @@
 {
-  "act_pause": {
-    "message": "暂停"
-  },
-  "act_restart": {
-    "message": "重新开始"
-  },
-  "act_restart_wait": {
-    "message": "重新开始前等待"
-  },
-  "act_restart_wait_fixed": {
-    "message": "按当前刷新间隔等待（$1 秒）"
-  },
-  "act_restart_wait_unit": {
-    "message": "秒"
-  },
-  "act_stop": {
-    "message": "停止"
-  },
   "action_pause": {
     "message": "暂停"
   },
@@ -49,9 +31,6 @@
   },
   "aria_refresh_limit_count": {
     "message": "刷新次数"
-  },
-  "aria_restart_wait": {
-    "message": "重新开始前的等待秒数"
   },
   "click_action": {
     "message": "触发方式"
@@ -125,11 +104,20 @@
   "interval_title": {
     "message": "间隔"
   },
+  "mode_desc_hold_input": {
+    "message": "光标在输入框内或任意输入框有内容时暂停，全部解除后恢复"
+  },
+  "mode_desc_stable": {
+    "message": "无视输入框状态，倒计时始终稳定刷新"
+  },
+  "mode_hold_input": {
+    "message": "输入框占用时暂停"
+  },
+  "mode_stable": {
+    "message": "始终稳定"
+  },
   "opt_desc_hard_refresh": {
     "message": "每次重新加载时绕过缓存"
-  },
-  "opt_desc_interactions": {
-    "message": "使用页面时的行为"
   },
   "opt_desc_keep_active": {
     "message": "适用于标签页在后台时会退出登录的网站"
@@ -144,7 +132,7 @@
     "message": "强制刷新"
   },
   "opt_interactions": {
-    "message": "用户交互时的刷新行为"
+    "message": "交互打断"
   },
   "opt_keep_active": {
     "message": "让页面在后台保持活动"
@@ -160,9 +148,6 @@
   },
   "opt_title": {
     "message": "选项"
-  },
-  "opt_trigger_scope": {
-    "message": "触发范围"
   },
   "pick_element": {
     "message": "选择元素"
@@ -202,24 +187,6 @@
   },
   "refresh_xhr_selector_placeholder": {
     "message": "例如 #refresh-btn 或 .load-more"
-  },
-  "scope_all": {
-    "message": "点击、打字、滚动都会触发"
-  },
-  "scope_inside_input_only": {
-    "message": "只有输入框内的点击/打字才触发，滚动与普通点击不影响刷新"
-  },
-  "scope_opt_all": {
-    "message": "任何交互"
-  },
-  "scope_opt_inside": {
-    "message": "仅框内"
-  },
-  "scope_opt_outside": {
-    "message": "仅框外"
-  },
-  "scope_outside_input": {
-    "message": "输入框外的点击/滚动会触发，框内打字不打扰刷新"
   },
   "selector_scope_hint": {
     "message": "仅对当前页面生效：$1"

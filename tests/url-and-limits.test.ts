@@ -68,22 +68,28 @@ describe('DEFAULT_OPTIONS 与需求对齐（B1）', () => {
     expect([3, 6, 10, 60]).toContain(DEFAULT_OPTIONS.fixedSeconds);
   });
 
-  it('schema 是 v3；不再有 custom 相关字段（ADR-021），也没有全局 selector 字段（ADR-022）', () => {
-    expect(DEFAULT_OPTIONS.schemaVersion).toBe(3);
+  it('schema 是 v4；不再有 custom / 全局 selector / 三选一动作相关字段', () => {
+    expect(DEFAULT_OPTIONS.schemaVersion).toBe(4);
     expect('customSeconds' in DEFAULT_OPTIONS).toBe(false);
     expect('fixedPreset' in DEFAULT_OPTIONS).toBe(false);
     expect('autoClickSelector' in DEFAULT_OPTIONS).toBe(false);
     expect('autoClickAction' in DEFAULT_OPTIONS).toBe(false);
+    // ADR-032：交互改成二选一，这四个字段与总开关都已删除
+    expect('interactions' in DEFAULT_OPTIONS).toBe(false);
+    expect('interactionAction' in DEFAULT_OPTIONS).toBe(false);
+    expect('interactionRestartWait' in DEFAULT_OPTIONS).toBe(false);
+    expect('interactionInputOnly' in DEFAULT_OPTIONS).toBe(false);
+    expect('ignoreInputField' in DEFAULT_OPTIONS).toBe(false);
   });
 
   it('页面首次配置的默认触发方式是单击', () => {
     expect(DEFAULT_CLICK_ACTION).toBe('single');
   });
 
-  it('默认完整页面刷新、只跟随重定向、忽略输入框为开', () => {
+  it('默认完整页面刷新、只跟随重定向、交互模式为「输入框占用时暂停」', () => {
     expect(DEFAULT_OPTIONS.refreshType).toBe('full');
     expect(DEFAULT_OPTIONS.redirection).toBe('follow');
-    expect(DEFAULT_OPTIONS.ignoreInputField).toBe(true);
+    expect(DEFAULT_OPTIONS.interactionMode).toBe('hold-input');
   });
 
   it('随机范围默认 [5,30]', () => {
