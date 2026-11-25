@@ -1,5 +1,5 @@
 /**
- * 元素拾取器（页内覆盖层）。设计依据 docs/10 §1.5 / ADR-018
+ * 元素拾取器（页内覆盖层）。设计依据 docs/10 §1.5 / ADR-018 / ADR-030
  *
  * 为什么不用浏览器原生方案：
  *   - `chrome.devtools.inspectedWindow` 只在 devtools 页面可用，popup 调不到；
@@ -11,12 +11,24 @@
  * 实现要点：
  *   - 宿主 `pointer-events: none`，否则 `elementFromPoint` 会命中我们自己（自我劫持）；
  *   - 样式装在 shadow root（mode: 'closed'）里，页面 CSS 影响不到；
- *   - 监听全部挂在 `window` 的**捕获阶段**，早于目标元素上的监听（防 stopImmediatePropagation）。
+ *   - 监听全部挂在 `window` 的**捕获阶段**，早于目标元素上的监听（防 stopImmediatePropagation）；
+ *   - 确认选中后进入 **sweep 阶段**（ADR-030）：那一次手势剩余的 `pointerup`/`mouseup`/`click`
+ *     也要被吞掉。否则用户"用来选元素"的这一下会穿透到真实页面，直接点中目标元素。
  */
 
 import { generateSelector } from './selector';
 
 const HOST_ID = 'ar-picker-host';
+
+/** sweep 阶段的安全超时：万一 click 一直没来（按下后拖走/取消），也要能收尾 */
+const SWEEP_TIMEOUT_MS = 400;
+
+/**
+ * sweep 阶段要吞掉的事件序列。mousedown/pointerdown 也在其中 ——
+ * beginSweep 摘掉了 hover 的 pointerdown 监听，而 pointerdown 的 preventDefault
+ * 不会抑制兼容性的 mousedown，不补回来就会漏到页面上。
+ */
+const SWEEP_EVENTS = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click', 'dblclick', 'auxclick'] as const;
 
 type PickerCallbacks = {
   /** 用户确认选中：带回生成的 selector 与元素摘要 */
@@ -132,7 +144,16 @@ export function startPicker(cb: PickerCallbacks): boolean {
   let lastTarget: Element | null = null;
   let lastClientX = 0;
   let lastClientY = 0;
-  let done = false;
+
+  /**
+   * 生命周期（ADR-030）
+   *   hover：正在高亮跟随鼠标，等待用户点一下
+   *   sweep：已经选中，但用户这一下的 pointerup/mouseup/click 还没发完 ——
+   *          继续吞掉，**不让它穿透到真实页面**
+   *   torn ：全部拆掉，结束
+   */
+  let phase: 'hover' | 'sweep' | 'torn' = 'hover';
+  let sweepTimer: ReturnType<typeof setTimeout> | 0 = 0;
 
   const paint = (target: Element | null): void => {
     if (!target) {
@@ -174,7 +195,17 @@ export function startPicker(cb: PickerCallbacks): boolean {
     return isPickable(hit) ? hit : null;
   };
 
+  /** 拦截事件，使其既不触发页面默认行为，也不触发页面上的监听 */
+  const swallow = (e: Event): void => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+  };
+
+  // ────────────────────────────────────────────── hover 阶段
+
   const onMove = (e: MouseEvent): void => {
+    if (phase !== 'hover') return;
     lastClientX = e.clientX;
     lastClientY = e.clientY;
     if (rafId) return; // rAF 节流：mousemove 频率可能上千 Hz
@@ -189,16 +220,10 @@ export function startPicker(cb: PickerCallbacks): boolean {
     });
   };
 
-  /** 拦截所有"会触发页面动作"的事件 */
-  const swallow = (e: Event): void => {
-    e.preventDefault();
-    e.stopPropagation();
-    e.stopImmediatePropagation();
-  };
-
   const onPickDown = (e: Event): void => {
+    if (phase !== 'hover') return;
     swallow(e);
-    if (done) return;
+
     const me = e as MouseEvent;
     const target = hitTest(me.clientX, me.clientY);
     if (!target) return;
@@ -207,29 +232,26 @@ export function startPicker(cb: PickerCallbacks): boolean {
     // 不支持的目标：不确认，保持拾取状态（用户可继续移动或按 Esc）
     if (!r.selector || r.shadow) return;
 
-    done = true;
-    const summary = summarize(target);
-    teardown();
-    cb.onPick(r.selector, summary);
+    // 选中了：进入 sweep，把这次手势剩下的 pointerup/mouseup/click 也吞掉
+    beginSweep();
+    cb.onPick(r.selector, summarize(target));
   };
 
   const onKeyDown = (e: KeyboardEvent): void => {
-    if (e.key !== 'Escape' || done) return;
+    if (phase !== 'hover') return;
+    if (e.key !== 'Escape') return;
     swallow(e);
-    done = true;
-    teardown();
-    cb.onCancel('escape');
+    cancel('escape');
   };
 
   const onContextMenu = (e: Event): void => {
     swallow(e);
-    if (done) return;
-    done = true;
-    teardown();
-    cb.onCancel('contextmenu');
+    if (phase !== 'hover') return;
+    cancel('contextmenu');
   };
 
   const onBlur = (): void => {
+    if (phase !== 'hover') return;
     // 窗口失焦（点到浏览器外/切走）：只清高亮，**不要拆掉拾取器**
     paint(null);
     lastTarget = null;
@@ -244,16 +266,92 @@ export function startPicker(cb: PickerCallbacks): boolean {
    * 切标签页只意味着"暂时看不见"，拾取态应当保留。
    */
   const onPageHide = (): void => {
-    done = true;
+    if (phase === 'torn') return;
+    const wasHover = phase === 'hover';
+    phase = 'torn';
     teardown();
-    cb.onCancel('navigated');
+    if (wasHover) cb.onCancel('navigated');
   };
+
+  // ────────────────────────────────────────────── sweep 阶段
+  //
+  // ADR-030 的核心：`pointerdown` 的默认行为被 preventDefault 取消后，
+  // 浏览器**仍会**继续派发 `mouseup` 与 `click`。而 hover 阶段的点击拦截器
+  // 在 onPickDown 里就被拆掉了，所以"用来选元素的那一下"会落到真实页面上，
+  // 把目标元素真的点一次（用户看到的现象就是"选元素时直接把页面按钮点了"）。
+  // 修法：先把 hover 的监听换成 sweep 的监听（仍然全部 swallow），
+  // 等 click 发完（或超时）再真正拆掉。
+
+  const onSweepEvent = (e: Event): void => {
+    swallow(e);
+    // click 是这串事件的最后一个；吞掉它就可以收尾了
+    if (e.type === 'click') endSweep();
+  };
+
+  const beginSweep = (): void => {
+    phase = 'sweep';
+    // 高亮与十字准星立即撤掉（用户已经选完了，不该再看到"还在选"）
+    if (rafId) {
+      cancelAnimationFrame(rafId);
+      rafId = 0;
+    }
+    paint(null);
+    document.documentElement.style.cursor = '';
+    try {
+      surface.host.remove();
+    } catch {
+      /* 页面可能已卸载 */
+    }
+
+    // hover 的这几项不再需要
+    window.removeEventListener('mousemove', onMove, true);
+    window.removeEventListener('mousedown', onPickDown, true);
+    window.removeEventListener('pointerdown', onPickDown, true);
+    window.removeEventListener('keydown', onKeyDown, true);
+    window.removeEventListener('blur', onBlur, true);
+    window.removeEventListener('click', swallow, true);
+    window.removeEventListener('dblclick', swallow, true);
+
+    /*
+     * 继续吞掉本次手势的剩余事件。
+     *
+     * 注意 `mousedown` / `pointerdown` 也必须在列表里：
+     * `pointerdown` 上 `preventDefault()` **不会**抑制兼容性的 `mousedown`，
+     * 而我们在 beginSweep 里刚把 hover 的 pointerdown 监听摘掉了 ——
+     * 不补回来的话，紧随其后的 `mousedown` 会落到真实页面（有些页面就是在 mousedown 上做事的）。
+     */
+    for (const type of SWEEP_EVENTS) window.addEventListener(type, onSweepEvent, true);
+
+    // 兜底：按下后拖走导致 click 永远不来时，也要能收尾
+    sweepTimer = setTimeout(endSweep, SWEEP_TIMEOUT_MS);
+  };
+
+  const endSweep = (): void => {
+    if (phase === 'torn') return;
+    phase = 'torn';
+    teardown();
+  };
+
+  /** 用户主动取消（Esc / 右键） */
+  const cancel = (reason: string): void => {
+    if (phase === 'torn') return;
+    phase = 'torn';
+    teardown();
+    cb.onCancel(reason);
+  };
+
+  // ────────────────────────────────────────────── 拆解
 
   function teardown(): void {
     if (rafId) {
       cancelAnimationFrame(rafId);
       rafId = 0;
     }
+    if (sweepTimer) {
+      clearTimeout(sweepTimer);
+      sweepTimer = 0;
+    }
+
     window.removeEventListener('mousemove', onMove, true);
     window.removeEventListener('mousedown', onPickDown, true);
     window.removeEventListener('pointerdown', onPickDown, true);
@@ -264,6 +362,7 @@ export function startPicker(cb: PickerCallbacks): boolean {
     window.removeEventListener('blur', onBlur, true);
     window.removeEventListener('pagehide', onPageHide, true);
 
+      for (const type of SWEEP_EVENTS) window.removeEventListener(type, onSweepEvent, true);
 
     document.documentElement.style.cursor = '';
     try {
@@ -273,6 +372,8 @@ export function startPicker(cb: PickerCallbacks): boolean {
     }
     activeCleanup = null;
   }
+
+  // ────────────────────────────────────────────── 装监听
 
   window.addEventListener('mousemove', onMove, true);
   window.addEventListener('mousedown', onPickDown, true);
@@ -284,13 +385,13 @@ export function startPicker(cb: PickerCallbacks): boolean {
   window.addEventListener('blur', onBlur, true);
   window.addEventListener('pagehide', onPageHide, true);
 
-
   // 十字准星（DevTools 的选择模式也是十字）
   document.documentElement.style.cursor = 'crosshair';
 
+  // 强制停止：无论当前处于哪个阶段都要拆干净
   activeCleanup = () => {
-    if (done) return;
-    done = true;
+    if (phase === 'torn') return;
+    phase = 'torn';
     teardown();
   };
 

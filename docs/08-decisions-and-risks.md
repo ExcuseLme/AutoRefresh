@@ -439,6 +439,43 @@
   本扩展只显示版本号，不带更新日期。
 - **风险**（R24）：版本号靠人工递增，仍可能漏。
   但有面板可见的指示器 + 检查项后，漏掉的概率大幅下降；真要根治可做脚本校验（暂不必要）。
+
+### ADR-030 · 拾取器"选中手势"不得穿透到页面（sweep 阶段）
+
+- **背景**（用户 bug 报告）："`选择元素`功能有个 bug，在我使用该功能对一个元素点击表示
+  '我想对这个元素触发 xhr 刷新'时，这次点击会直接触发对该元素的点击事件，
+  但这次点击只应该用于元素选择不应该穿透到真实页面"。
+- **根因**：拾取器在 `pointerdown` 里就判定"选中"并**立刻 `teardown()`**（把监听全摘掉）。
+  但一次左键点击的事件序列是：
+  ```
+  pointerdown → mousedown → pointerup → mouseup → click
+  ```
+  `pointerdown` 上 `preventDefault()` 只抑制"默认动作"，**不会阻止后续事件继续派发**。
+  所以 `onPickDown` 里 `teardown()` 之后，紧随其后的 `mousedown`/`pointerup`/`mouseup`/`click`
+  都没有监听拦截了，全部落到真实页面 —— 用户看到的就是"选元素那一下把页面按钮点了"。
+- **决策**：把拾取器生命周期拆成三段，新增 **sweep 阶段**：
+  | 阶段 | 含义 | 监听 |
+  | --- | --- | --- |
+  | `hover` | 高亮跟随鼠标，等待用户点 | mousemove/mousedown/pointerdown/click/dblclick/contextmenu/keydown/blur/pagehide |
+  | `sweep` | **已选中**，本次手势剩余事件还没发完 | pointerdown/mousedown/pointerup/mouseup/click/dblclick/auxclick（全部 swallow） |
+  | `torn` | 已拆干净 | 无 |
+  - 选中时**先**把 hover 的监听换成 sweep 的监听（而不是直接 `teardown()`），
+    并把高亮/十字准星/宿主节点立即撤掉（用户已经选完，不该再看到"还在选"）。
+  - sweep 持续到**吞掉 `click`** 为止（click 是这串事件的最后一个），然后才真正 teardown。
+  - 兜底：`setTimeout(endSweep, 400)` —— 按下后拖走导致 click 永远不来时也要能收尾。
+  - `mousedown`/`pointerdown` 也必须在 sweep 列表里：`pointerdown` 的 `preventDefault()`
+    **不会**抑制兼容性的 `mousedown`，而 beginSweep 刚把 hover 的 pointerdown 监听摘掉了，
+    不补回来就会漏到页面（有些页面就是靠 `mousedown` 做事的）。
+- **验证**：
+  - 单测 `tests/picker-sweep.test.ts`（4 例）：选中后完整的
+    `pointerdown→mousedown→pointerup→mouseup→click` 序列，页面监听计数**必须全为 0**；
+    sweep 结束后拾取器退出、页面点击恢复正常生效；hover 阶段的 click 也不穿透；
+    未命中元素时不确认且继续停留 hover。
+  - 真实浏览器（本地测试页，按钮上挂了五种事件的计数器）：
+    拾取模式下点该按钮 ⇒ `clicks=0 pointerdown=0 mousedown=0 pointerup=0 mouseup=0 click=0`，
+    同时 `pageSelectors` 正确写入 `#btn`；拾取结束后再点 ⇒ 正常计数 5/5。
+- **代价**：拾取器多了一个状态与一个 400ms 定时器；`activeCleanup` 在 sweep 期间仍然有效，
+  所以"强制停止"（导航走 / SW 要求停止）依旧能立即拆干净。
 ## 2. 开放问题（**已全部关闭**，结论见下表；实现按结论落地）
 
 | ID | 问题 | 结论（用户已确认或已采纳默认） | 落地 |
@@ -500,3 +537,4 @@
 | 2026-11-25 | **ADR-027**（交互触发范围三档 + 视觉分组 + 头部按钮语义重排） | lead |
 | 2026-11-25 | **ADR-028**（触发范围改三段 SegmentedControl；修 flex 子项被压缩的裁切 bug） | lead |
 | 2026-11-25 | **ADR-029**（版本号单一真源 + 面板显示版本号；v0.1.0 → v0.2.0） | lead |
+| 2026-11-25 | **ADR-030**（拾取器 sweep 阶段：选中手势不穿透页面；v0.2.0 → v0.2.1） | lead |

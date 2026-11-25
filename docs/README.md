@@ -83,6 +83,17 @@ Open Questions 的结论（已全部关闭）：
   （语义属性 → 短结构路径 → id → class → 兜底）；**不申请 `debugger` 权限**。
 - `2026-11-24` 测试 80 → **124**（新增 `tests/selector.test.ts`，`dom-click` 重写覆盖双击）。
   构建体积 293 → 304.7 KiB —— **不设体积门槛**（用户明确：自用扩展，不管体积）
+变更记录（第十一轮，ADR-030）：v0.2.0 → **v0.2.1**
+- **修掉「选择元素」的点击穿透 bug**：用户为了选元素点的那一下，会把页面上的该元素**真的点一次**。
+  根因是拾取器在 `pointerdown` 里就 `teardown()` 了，而一次点击还有
+  `mousedown → pointerup → mouseup → click` 四五个事件跟在后面 —— 监听已拆，全部落到页面。
+- 修法：新增 **sweep 阶段**。选中时不直接拆，而是把 hover 监听换成 sweep 监听
+  （全部 `swallow`），等吞掉 `click` 才真正 teardown；另加 400ms 兜底定时器
+  （按下后拖走导致 click 不来时也能收尾）。高亮/十字准星/宿主节点在选中瞬间即刻撤掉。
+- 实测（本地测试页，按钮挂 5 种事件计数器）：拾取模式下点该按钮 ⇒
+  `clicks=0 pointerdown=0 mousedown=0 pointerup=0 mouseup=0 click=0`，
+  同时 `pageSelectors` 正确写入 `#btn`；拾取结束后再点 ⇒ 正常计数。
+- 新增 `tests/picker-sweep.test.ts`（4 例）。测试 181 → **185**。
 变更记录（第十轮，ADR-029）：扩展版本号 v0.1.0 → **v0.2.0**
 - **版本号单一真源 = `package.json`**：删掉 `wxt.config.ts` 里硬写的 `version`，
   WXT 自动从 package.json 读取写入 manifest（已验证改一处即产物同步）。

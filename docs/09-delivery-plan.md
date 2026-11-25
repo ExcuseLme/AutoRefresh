@@ -320,6 +320,19 @@ T-43（浏览器重启）、T-46（与 ARP 并存）。这三项的代码路径�
 | 三个 section 无裁切 | ✅ | `sectionsClipped` 全为 `false`；`scrollHeight === clientHeight` |
 | 滚动容器可滚动 | ✅ | 内容超高时 `scrollerScrollH(637) > clientHeight(518)`，容器滚动而非压扁子项 |
 
+### 拾取器点击不穿透（ADR-030，第十一轮，v0.2.1）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| 选中手势不触发页面监听 | ✅ | 单测：`pointerdown→mousedown→pointerup→mouseup→click` 全序列后，页面监听计数 `[]`（全 0） |
+| 真实浏览器验证 | ✅ | 本地测试页按钮挂 5 种事件计数器：拾取模式下点它 ⇒ `clicks=0 pointerdown=0 mousedown=0 pointerup=0 mouseup=0 click=0` |
+| selector 仍正确落库 | ✅ | 同上实验后 `pageSelectors['http://127.0.0.1:45999/'] = {selector:'#btn', action:'single'}` |
+| sweep 后拾取器退出 | ✅ | `isPickerActive() === false`，宿主节点已移除 |
+| 退出后页面恢复正常 | ✅ | 同一元素再点一次 ⇒ 计数器 5/5 全部正常递增 |
+| hover 阶段也不穿透 | ✅ | 未选中时 `click` 直接吞掉，页面计数 0 |
+| 未命中元素不误确认 | ✅ | `elementFromPoint` 返回 null 时 `onPick` 未被调用，拾取器仍处于 hover |
+| 400ms 兜底 | ✅ | 按下后不发 click 也会 `endSweep()` 收尾（避免监听永久残留） |
+
 ### 回归
 
 | 用例 | 结果 | 证据 |

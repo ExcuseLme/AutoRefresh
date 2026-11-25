@@ -151,11 +151,37 @@ popup            SW                     content(ISOLATED)          页面
   | --- | --- |
   | `mousemove` / `pointermove` | `elementFromPoint(clientX, clientY)` 命中目标；用 `requestAnimationFrame` 节流 |
   | `mousedown` / `pointerdown` | `preventDefault()` + `stopImmediatePropagation()`，**避免触发页面自身动作**（否则点选会变成真的点击） |
-  | `click` | 同上 + 确认选中 |
+  | `click` | 同上（hover 阶段直接吞；sweep 阶段吞掉即收尾） |
   | `dblclick` | 同上（避免误触发页面双击逻辑） |
   | `keydown` | `Esc` 取消；其余按键放行 |
   | `contextmenu` | `preventDefault()` + 取消（与 DevTools 一致） |
-  | `pagehide` / `visibilitychange` | 清理（页面被导航走/切走时不残留） |
+  | `pagehide` | 清理并通知 SW（**不监听 `visibilitychange`**：切标签页不等于卸载，见 ADR-030 前的实测） |
+
+#### 1.5.1 sweep 阶段（ADR-030，必须实现）
+
+> 这是个**真实踩过的坑**：早期实现只在 `pointerdown` 上拦截，并在 `pointerdown` 里就
+> `teardown()`。但一次左键点击的完整序列是
+> `pointerdown → mousedown → pointerup → mouseup → click`，
+> `pointerdown` 的 `preventDefault()` **不会**阻止后续事件继续派发。
+> 监听已拆 ⇒ 后面四五个事件全落到真实页面 ⇒ **"选元素那一下把页面按钮真的点了"**。
+
+修法是给拾取器加第三个阶段：
+
+| 阶段 | 含义 | 监听（全部 capture + swallow） |
+| --- | --- | --- |
+| `hover` | 高亮跟随鼠标，等待用户点 | mousemove、mousedown、pointerdown、click、dblclick、contextmenu、keydown、blur、pagehide |
+| `sweep` | **已选中**，本次手势剩余事件未发完 | pointerdown、mousedown、pointerup、mouseup、click、dblclick、auxclick |
+| `torn` | 已拆干净 | 无 |
+
+- 选中时**先换监听**（hover → sweep）再撤 UI：高亮框/十字准星/宿主节点立刻移除，
+  但事件拦截继续到 `click` 发完（`click` 是这串事件的最后一个）。
+- `pointerup`/`mouseup`/`click` 收到即 `swallow`；收到 `click` 后 `endSweep()` 真正 teardown。
+- 兜底 `setTimeout(endSweep, 400)`：按下后拖走导致 click 永远不来时也要能收尾。
+- `mousedown` 必须在 sweep 列表里 —— `pointerdown` 的 `preventDefault()` 不抑制兼容性 `mousedown`，
+  而 beginSweep 已把 hover 的 pointerdown 监听摘掉，不补回就漏到页面（有些页面靠 `mousedown` 做事）。
+
+验收：`tests/picker-sweep.test.ts` 断言选中后完整序列让页面监听计数**全为 0**，
+且 sweep 结束后（呼出拾取器之前）页面点击恢复正常。
 - 目标过滤：跳过 `html`、`body`；跳过我们自己的宿主（`#ar-picker-host` 及其子树）；
   跳过 `display:none` / `0×0` 元素（无法高亮，选它没意义）
 - 清理函数必须幂等：移除 host、移除所有监听、清 rAF。SW 侧 `PICKER_STOP`
