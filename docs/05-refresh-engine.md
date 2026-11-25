@@ -205,18 +205,21 @@ if (!(!n?.status || t?.isInput && i.ignoreInputField) && Gh(n.status) && r?.doma
 - `pause`：保留 `count`，`prevStatus` 记录，`RESUME` 时回到原状态（ARP `mS`/`hS`/`gS`）。
 - `stop`：清会话（ARP 还会 `markRecentlyStopped` 以便"最近停止"列表，本扩展不需要该列表，故只清理）。
 
-### 5.2.0 谁算"用户交互"（ADR-027）
+### 5.2.0 谁算"用户交互"（ADR-028）
 
-`decideInteraction(opt, isInput)` 的第一层过滤是**触发范围**（`triggerScope`），三档：
+`decideInteraction(opt, isInput)` 的第一层过滤是**触发范围**（`triggerScope`），三档**互斥**：
 
-| 档位 | 条件 | 判定 |
+| 档位 | 存储字段 | 判定 |
 | --- | --- | --- |
-| `all` | 两个子开关都关 | 都触发 |
-| `outside-input` | `ignoreInputField=true` 且 `interactionInputOnly=false` | `isInput` 时不触发（默认档） |
-| `inside-input-only` | `interactionInputOnly=true` | `isInput` 时才触发；普通点击/滚动不影响倒计时 |
+| `all` | `{inputOnly:false, ignoreInput:false}` | 都触发 |
+| `outside-input` | `{inputOnly:false, ignoreInput:true}` | `isInput` 时不触发（**默认档**） |
+| `inside-input-only` | `{inputOnly:true}` | `isInput` 时才触发；普通点击/滚动不影响倒计时 |
 
-`interactionInputOnly` 优先于 `ignoreInputField`：两者同时为真时取 `inside-input-only`，
-不会产生"任何交互都不触发"的死状态。
+UI 上是三段 `SegmentedControl`，所以**不存在"两个都开"的非法态**。
+存储层仍沿用两个布尔字段（不改 schema），由 `scopePatch` / `triggerScope` 双向映射。
+
+`triggerScope` 映射时 `interactionInputOnly` 优先，用于兼容 ADR-027 期间可能产生的
+`{true,true}` 历史数据 —— 那种数据读出来是 `inside-input-only`，行为是正确的。
 
 调用方（`background.ts` 的 `onInteraction`）只判断 `target` 是不是输入类元素
 （`input` / `textarea` / `contenteditable`），滚动与普通点击按 `isInput=false` 传进来。

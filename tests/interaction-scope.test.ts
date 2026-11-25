@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest';
-import { decideInteraction, exclusiveScopePatch, restartWaitSeconds, triggerScope } from '@/lib/interaction';
+import { decideInteraction, restartWaitSeconds, scopePatch, triggerScope } from '@/lib/interaction';
 import { DEFAULT_OPTIONS } from '@/lib/options';
 
-describe('triggerScope（ADR-027：三档触发范围）', () => {
+describe('triggerScope（三档触发范围）', () => {
   it('两个子开关都关 ⇒ 任何交互都触发', () => {
     expect(triggerScope({ interactionInputOnly: false, ignoreInputField: false })).toBe('all');
   });
@@ -54,29 +54,38 @@ describe('decideInteraction 与触发范围联合', () => {
   });
 });
 
-describe('exclusiveScopePatch（两个子开关的单向互斥）', () => {
-  it('开「仅输入框内」只改自己，保留 ignoreInputField', () => {
-    // 关键：不动 ignoreInputField ⇒ 关掉它时能回到原来那一档
-    expect(exclusiveScopePatch('inputOnly', true)).toEqual({ interactionInputOnly: true });
+describe('scopePatch / triggerScope 三档互斥（ADR-028）', () => {
+  it('all 档 ⇒ 两个布尔都关', () => {
+    expect(scopePatch('all')).toEqual({ interactionInputOnly: false, ignoreInputField: false });
   });
 
-  it('关「仅输入框内」只改自己 ⇒ 回到关它之前的那一档', () => {
-    expect(exclusiveScopePatch('inputOnly', false)).toEqual({ interactionInputOnly: false });
+  it('outside-input 档 ⇒ 只开 ignoreInputField', () => {
+    expect(scopePatch('outside-input')).toEqual({ interactionInputOnly: false, ignoreInputField: true });
   });
 
-  it('开「忽略输入框交互」必须同时关掉「仅输入框内」', () => {
-    // 否则点下去看起来没反应（triggerScope 里 inputOnly 优先）
-    expect(exclusiveScopePatch('ignoreInput', true)).toEqual({
-      ignoreInputField: true,
-      interactionInputOnly: false,
-    });
+  it('inside-input-only 档 ⇒ 只开 interactionInputOnly', () => {
+    expect(scopePatch('inside-input-only')).toEqual({ interactionInputOnly: true });
   });
 
-  it('关「忽略输入框交互」只改自己', () => {
-    expect(exclusiveScopePatch('ignoreInput', false)).toEqual({ ignoreInputField: false });
+  it('每个档位 patch 后再读回，档位不变（往返一致）', () => {
+    for (const scope of ['all', 'outside-input', 'inside-input-only'] as const) {
+      const opt = { interactionInputOnly: false, ignoreInputField: true, ...scopePatch(scope) };
+      expect(triggerScope(opt)).toBe(scope);
+    }
+  });
+
+  it('三档之间切换不会残留上一档的状态', () => {
+    // all → inside：ignoreInputField 被保留为 true，但 inputOnly 优先，读回仍是 inside
+    const afterInside = { interactionInputOnly: false, ignoreInputField: true, ...scopePatch('inside-input-only') };
+    expect(triggerScope(afterInside)).toBe('inside-input-only');
+    // inside → all：两个都被显式关掉，不会因为 inputOnly 残留而卡在 inside
+    const afterAll = { ...afterInside, ...scopePatch('all') };
+    expect(triggerScope(afterAll)).toBe('all');
+    // all → outside：回到默认档
+    const afterOutside = { ...afterAll, ...scopePatch('outside-input') };
+    expect(triggerScope(afterOutside)).toBe('outside-input');
   });
 });
-
 describe('restartWaitSeconds（ADR-026）', () => {
   it('固定档取固定间隔，忽略自定义值', () => {
     expect(restartWaitSeconds({ intervalMode: 'fixed', fixedSeconds: 13, interactionRestartWait: 5 }, 5)).toBe(13);

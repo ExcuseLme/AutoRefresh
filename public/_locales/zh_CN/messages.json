@@ -128,12 +128,6 @@
   "opt_desc_hard_refresh": {
     "message": "每次重新加载时绕过缓存"
   },
-  "opt_desc_ignore_input": {
-    "message": "在输入框内点击或打字也继续刷新"
-  },
-  "opt_desc_input_only": {
-    "message": "只在输入框里点击或打字时才触发，普通点击与滚动不影响刷新"
-  },
   "opt_desc_interactions": {
     "message": "使用页面时的行为"
   },
@@ -148,12 +142,6 @@
   },
   "opt_hard_refresh": {
     "message": "强制刷新"
-  },
-  "opt_ignore_input": {
-    "message": "忽略输入框交互"
-  },
-  "opt_input_only": {
-    "message": "仅输入框内触发"
   },
   "opt_interactions": {
     "message": "用户交互时的刷新行为"
@@ -216,13 +204,22 @@
     "message": "例如 #refresh-btn 或 .load-more"
   },
   "scope_all": {
-    "message": "当前：任何交互都触发"
+    "message": "点击、打字、滚动都会触发"
   },
   "scope_inside_input_only": {
-    "message": "当前：仅输入框内的交互触发"
+    "message": "只有输入框内的点击/打字才触发，滚动与普通点击不影响刷新"
+  },
+  "scope_opt_all": {
+    "message": "任何交互"
+  },
+  "scope_opt_inside": {
+    "message": "仅框内"
+  },
+  "scope_opt_outside": {
+    "message": "仅框外"
   },
   "scope_outside_input": {
-    "message": "当前：输入框外的交互触发"
+    "message": "输入框外的点击/滚动会触发，框内打字不打扰刷新"
   },
   "selector_scope_hint": {
     "message": "仅对当前页面生效：$1"

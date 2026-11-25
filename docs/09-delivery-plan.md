@@ -305,6 +305,20 @@ T-43（浏览器重启）、T-46（与 ARP 并存）。这三项的代码路径�
 | 暂停态直接点「停止」 | ✅ | 点右侧按钮即停，变回 `[开始]`，不必先「继续」 |
 | 单测覆盖 | ✅ | `tests/interaction-scope.test.ts` 16 例（三档组合 / 优先级 / 单向互斥 / restart 取值） |
 
+### 三档触发范围 + flex 裁切修复（ADR-028，第九轮）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| 三档标签渲染 | ✅ | `[任何交互][仅框外][仅框内]`，默认选中「仅框外」 |
+| 切档落库 | ✅ | 仅框内 ⇒ `{inputOnly:true, ignoreInput:true}`；任何交互 ⇒ `{false,false}`；仅框外 ⇒ `{false,true}` |
+| 档位往返一致 | ✅ | 单测：每个 `scopePatch` 后再 `triggerScope` 读回，档位不变 |
+| 三档互切不残留 | ✅ | 单测：`all → inside → all → outside` 每次都读回正确档位 |
+| 老数据兼容 | ✅ | `{inputOnly:true, ignoreInput:true}` 读出 `inside-input-only`，无需迁移 |
+| 刷新类型不再被裁 | ✅ | `fused h=138 / scrollHeight=136`（修复前 `h=96 / scrollHeight=136`） |
+| XHR 交互组件可见 | ✅ | 「选择元素」「测试选择器」、selector 输入框、「触发方式」行 `inView` 全 true |
+| 三个 section 无裁切 | ✅ | `sectionsClipped` 全为 `false`；`scrollHeight === clientHeight` |
+| 滚动容器可滚动 | ✅ | 内容超高时 `scrollerScrollH(637) > clientHeight(518)`，容器滚动而非压扁子项 |
+
 ### 回归
 
 | 用例 | 结果 | 证据 |

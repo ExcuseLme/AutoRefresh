@@ -185,7 +185,12 @@ export default function App() {
   return (
     <div className="flex max-h-[560px] flex-col bg-[var(--background)]">
       <Header session={session} options={options} control={control} />
-      <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-2 py-2">
+      {/*
+       * [&>*]:shrink-0 是必须的：本容器是 flex-col，直接子元素默认 flex-shrink:1，
+       * 内容超出高度时它们会被**压扁**（配合内层 overflow-hidden 就变成"字只露上半截、
+       * 后面的组件看不见"）。滚动容器里的子项必须不参与收缩，让容器自己滚动。
+       */}
+      <div className="flex flex-1 flex-col gap-2 overflow-y-auto px-2 py-2 [&>*]:shrink-0">
         {!ready ? (
           <p className="px-1 py-4 text-center text-[11px] text-[var(--muted-foreground)]">{t('status_loading')}</p>
         ) : (

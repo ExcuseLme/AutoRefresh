@@ -1,13 +1,20 @@
 import { useState } from 'react';
-import { Select, Switch, SwitchRow } from './ui';
+import { SegmentedControl, Select, SwitchRow } from './ui';
 
 import { t } from '@/lib/i18n';
-import { exclusiveScopePatch, triggerScope } from '@/lib/interaction';
+import { triggerScope, type TriggerScope, scopePatch } from '@/lib/interaction';
 import { parseStrictInt } from '@/lib/number-input';
 import type { InteractionAction, Options, Redirection } from '@/lib/options';
 import { readOptionsCollapsed, writeOptionsCollapsed } from '@/lib/storage';
 
 type PatchFn = (next: Partial<Options>) => Promise<{ ok: boolean; code?: string }>;
+
+/** 触发范围三档（ADR-028）。互斥由枚举本身保证，不存在"两个都开"的非法态 */
+const SCOPE_ITEMS: { value: TriggerScope; labelKey: string; descKey: string }[] = [
+  { value: 'all', labelKey: 'scope_opt_all', descKey: 'scope_all' },
+  { value: 'outside-input', labelKey: 'scope_opt_outside', descKey: 'scope_outside_input' },
+  { value: 'inside-input-only', labelKey: 'scope_opt_inside', descKey: 'scope_inside_input_only' },
+];
 
 const ACTIONS: { value: InteractionAction; labelKey: string; danger?: boolean }[] = [
   { value: 'stop', labelKey: 'act_stop', danger: true },
@@ -160,37 +167,31 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
                   )
                 ) : null}
 
-                {/* 触发范围：两个互斥子开关，缩进 + 左侧竖线表示从属于上方 */}
-                <div className="ml-1 flex flex-col gap-0.5 border-l-2 border-[var(--border)] pl-2">
+                {/*
+                 * 触发范围（ADR-028）：三段互斥，用 SegmentedControl 而不是两个开关。
+                 *
+                 * 为什么不用两个开关：2 个布尔 = 4 种组合，但只有 3 种合法（两端/仅框外/仅框内），
+                 * `{inputOnly:true, ignoreInputField:true}` 那个组合是冗余非法态。
+                 * 无论怎么调互斥规则都只是在掩盖它（优先级 / 强制关另一个 / 置灰），
+                 * 用一个三档枚举就天然互斥、没有非法态、也不需要"记住上一档"。
+                 *
+                 * 映射到已有字段（不改 schema）：
+                 *   all    → { interactionInputOnly: false, ignoreInputField: false }
+                 *   outside→ { interactionInputOnly: false, ignoreInputField: true }
+                 *   inside → { interactionInputOnly: true }（ignoreInputField 不参与判定）
+                 */}
+                <div className="ml-1 flex flex-col gap-1 border-l-2 border-[var(--border)] pl-2">
                   <p className="text-[10px] font-medium leading-tight text-[var(--muted-foreground)]">
                     {t('opt_trigger_scope')}
                   </p>
-                  <SubSwitchRow
-                    title={t('opt_input_only')}
-                    description={t('opt_desc_input_only')}
-                    checked={options.interactionInputOnly}
-                    label={t('opt_input_only')}
-                    onChange={(v) => void patch(exclusiveScopePatch('inputOnly', v))}
+                  <SegmentedControl
+                    value={scope}
+                    items={SCOPE_ITEMS.map((s) => ({ value: s.value, label: t(s.labelKey) }))}
+                    onChange={(v) => void patch(scopePatch(v as TriggerScope))}
+                    ariaLabel={t('opt_trigger_scope')}
                   />
-                  <SubSwitchRow
-                    title={t('opt_ignore_input')}
-                    description={t('opt_desc_ignore_input')}
-                    checked={options.ignoreInputField}
-                    label={t('opt_ignore_input')}
-                    // ADR-027：两者互斥但都保持可点 —— 点这个会顺带关掉「仅输入框内」。
-                    // 不置灰的原因：一旦置灰，用户开了「仅输入框内」后就没法直接切到这一档，
-                    // 必须先回去关掉另一个开关，多一步且容易卡住。
-                    onChange={(v) => void patch(exclusiveScopePatch('ignoreInput', v))}
-                  />
-                  {/* 当前生效范围的实时说明，避免"两个开关看不懂" */}
-                  <p className="text-[10px] leading-tight text-[var(--primary)]">
-                    {t(
-                      scope === 'inside-input-only'
-                        ? 'scope_inside_input_only'
-                        : scope === 'outside-input'
-                          ? 'scope_outside_input'
-                          : 'scope_all',
-                    )}
+                  <p className="text-[10px] leading-tight text-[var(--muted-foreground)]">
+                    {t(SCOPE_ITEMS.find((s) => s.value === scope)?.descKey ?? 'scope_all')}
                   </p>
                 </div>
               </div>
@@ -232,32 +233,6 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
   );
 }
 
-/** 从属子开关行（比 SwitchRow 更轻，用在父项的卡片内部） */
-function SubSwitchRow({
-  title,
-  description,
-  checked,
-  label,
-  disabled,
-  onChange,
-}: {
-  title: string;
-  description: string;
-  checked: boolean;
-  label: string;
-  disabled?: boolean;
-  onChange: (v: boolean) => void;
-}) {
-  return (
-    <div className="flex items-center gap-2">
-      <div className="min-w-0 flex-1 leading-tight">
-        <p className="truncate text-[11px] font-medium text-[var(--foreground)]">{title}</p>
-        <p className="truncate text-[10px] text-[var(--muted-foreground)]">{description}</p>
-      </div>
-      <Switch checked={checked} onChange={onChange} ariaLabel={label} disabled={disabled} />
-    </div>
-  );
-}
 
 /** 小号整数输入（次数 / 等待秒数） */
 function IntField({

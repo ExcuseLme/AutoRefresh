@@ -4,19 +4,39 @@ import type { IntervalMode, Options } from './options';
 export type InteractionDecision = { action: 'pause' | 'stop' | 'restart'; waitSeconds: number } | null;
 
 /**
- * 触发范围（ADR-027）。三档，由两个互斥子选项决定：
+ * 触发范围（ADR-028）。三档**互斥**，用枚举而不是两个布尔：
  *
- * | interactionInputOnly | ignoreInputField | 谁会触发 |
- * | --- | --- | --- |
- * | false | false | **所有**交互（点击/打字/滑动）都触发 |
- * | false | true  | 只有**输入框外**的交互触发（默认，输入框内打字不打扰刷新） |
- * | true  | （无关） | 只有**输入框内**的点击/打字触发，普通点击与滚动不影响刷新 |
+ * | 档位 | 谁会触发交互动作 |
+ * | --- | --- |
+ * | `all` | 任何交互（点击/打字/滚动） |
+ * | `outside-input` | 只有输入框外的交互（默认） |
+ * | `inside-input-only` | 只有输入框内的点击/打字，普通点击与滚动不影响刷新 |
  *
- * `interactionInputOnly` 优先：一旦开启，`ignoreInputField` 不再参与判断
- * （否则两者同时为真的组合会产生"任何交互都不触发"的死状态）。
+ * 为什么是枚举：2 个开关 = 4 种组合，但只有上述 3 种合法，
+ * `{interactionInputOnly:true, ignoreInputField:true}` 是冗余非法态。
+ * 改成三档后互斥天然成立，不需要优先级、不需要"记住上一档"、也不会出现非法状态。
+ *
+ * 存储层仍沿用两个布尔字段（不改 schema），由 `scopePatch` / `triggerScope` 双向映射：
+ * - `all`    ⇒ `{ interactionInputOnly: false, ignoreInputField: false }`
+ * - `outside`⇒ `{ interactionInputOnly: false, ignoreInputField: true }`
+ * - `inside` ⇒ `{ interactionInputOnly: true }`（`ignoreInputField` 此时不参与判定）
  */
 export type TriggerScope = 'all' | 'outside-input' | 'inside-input-only';
 
+/** 档位 ⇒ 落到存储字段的 patch（供 UI 用） */
+export function scopePatch(scope: TriggerScope): Partial<Options> {
+  switch (scope) {
+    case 'all':
+      return { interactionInputOnly: false, ignoreInputField: false };
+    case 'outside-input':
+      return { interactionInputOnly: false, ignoreInputField: true };
+    case 'inside-input-only':
+      // 只需打开 interactionInputOnly；它优先于 ignoreInputField，后者无需改动
+      return { interactionInputOnly: true };
+  }
+}
+
+/** 存储字段 ⇒ 档位（供判定与 UI 回显用） */
 export function triggerScope(
   opt: Pick<Options, 'interactionInputOnly' | 'ignoreInputField'>,
 ): TriggerScope {
@@ -60,30 +80,4 @@ export function decideInteraction(opt: Options, isInput: boolean): InteractionDe
     action: opt.interactionAction,
     waitSeconds: restartWaitSeconds(opt, opt.interactionRestartWait),
   };
-}
-
-/**
- * 供 UI 用：两个子开关的互斥规则。
- *
- * 设计要点（ADR-027）：互斥是**单向**的，这样"关掉刚打开的那个"能回到原状态。
- *
- * | 操作 | 结果 patch | 说明 |
- * | --- | --- | --- |
- * | 开「仅输入框内」 | 只设 `interactionInputOnly=true` | 不动 `ignoreInputField`；它已被 `triggerScope` 的优先级盖住 |
- * | 关「仅输入框内」 | 只设 `interactionInputOnly=false` | `ignoreInputField` 还是原来的值 ⇒ **自动回到关它之前的那一档** |
- * | 开「忽略输入框交互」 | `ignoreInputField=true` + `interactionInputOnly=false` | 否则点了看起来没反应（inputOnly 优先），必须真的切走 |
- * | 关「忽略输入框交互」 | 只设 `ignoreInputField=false` | 此时必然是 `all` 档 |
- */
-export function exclusiveScopePatch(
-  which: 'inputOnly' | 'ignoreInput',
-  value: boolean,
-): Partial<Options> {
-  if (which === 'inputOnly') {
-    return value
-      ? { interactionInputOnly: true }
-      : { interactionInputOnly: false };
-  }
-  return value
-    ? { ignoreInputField: true, interactionInputOnly: false }
-    : { ignoreInputField: false };
 }
