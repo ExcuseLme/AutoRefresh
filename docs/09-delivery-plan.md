@@ -280,6 +280,16 @@ T-43（浏览器重启）、T-46（与 ARP 并存）。这三项的代码路径�
 | 注入 400 字符 URL（截图 `impl-v6-fixed-width.png`） | ✅ | 仍为 400，且 `title` 已挂（149 字符），悬浮可看全文 |
 | 原生 tooltip 不影响布局 | ✅ | `title` 由浏览器绘制在页面之上，不参与布局计算 |
 
+### restart 等待秒数（ADR-026，第七轮）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| 固定档无输入框 | ✅ | 开交互 + 选「重新开始」后，`input[name=interactionRestartWait]` **不存在**；显示 `按当前刷新间隔等待（6 秒）`（截图 `impl-v7-restart-fixed.png`） |
+| 固定档用当前间隔 | ✅ | 单测：`fixedSeconds=6` + `interactionRestartWait=5` ⇒ `waitSeconds=6`（自定义值被忽略） |
+| 随机档保留输入框 | ✅ | 切到「随机」后输入框出现，值为 6，标签 `重新开始前等待` 在场 |
+| 随机档用自定义值 | ✅ | 单测：`intervalMode=random` + `interactionRestartWait=5` ⇒ `waitSeconds=5` |
+| 脏数据防御 | ✅ | 负数夹到 0、小数四舍五入（`tests/restart-wait.test.ts`） |
+
 ### 回归
 
 | 用例 | 结果 | 证据 |

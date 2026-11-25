@@ -83,6 +83,13 @@ Open Questions 的结论（已全部关闭）：
   （语义属性 → 短结构路径 → id → class → 兜底）；**不申请 `debugger` 权限**。
 - `2026-11-24` 测试 80 → **124**（新增 `tests/selector.test.ts`，`dom-click` 重写覆盖双击）。
   构建体积 293 → 304.7 KiB —— **不设体积门槛**（用户明确：自用扩展，不管体积）
+变更记录（第七轮，ADR-026）：
+- **固定档「重新开始前等待」不再让用户填数字**，直接用当前固定刷新间隔；
+  只有**随机档**才保留那个自定义输入框（随机档没有单一间隔值）。
+- 这不只是 UI 改动：`restartWaitSeconds()` 改在**运行期**取值，
+  所以固定档 `fixedSeconds=6` + `interactionRestartWait=5` 实际等待 **6 秒**（不是 5）。
+- 固定档面板显示只读提示 `按当前刷新间隔等待（6 秒）`（新 key `act_restart_wait_fixed`）。
+- 测试 154 → **160**（新增 `tests/restart-wait.test.ts`，覆盖固定/随机/负数/小数四种情况）。
 变更记录（第六轮，ADR-025）：
 - **修掉"面板宽度被 URL 撑开"的 bug**。根因是 ADR-023 只写了 `min-width: 400px` ——
   Chrome popup 按内容自动算宽，`min-width` 只有下限没有上限，所以长 URL 会把整个面板顶宽，

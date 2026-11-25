@@ -127,19 +127,27 @@ export function OptionsSection({ options, patch }: { options: Options; patch: Pa
                   })}
                 </div>
                 {options.interactionAction === 'restart' ? (
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="text-[10.5px] text-[var(--muted-foreground)]">{t('act_restart_wait')}</span>
-                    <div className="flex items-center gap-1">
-                      <IntField
-                        value={options.interactionRestartWait}
-                        min={0}
-                        ariaLabel={t('aria_restart_wait')}
-                        name="interactionRestartWait"
-                        onCommit={(v) => void patch({ interactionRestartWait: v })}
-                      />
-                      <span className="text-[10.5px] text-[var(--muted-foreground)]">{t('act_restart_wait_unit')}</span>
+                  /* ADR-026：固定档直接用当前刷新间隔，不提供输入框；
+                     只有随机档（没有"当前间隔"这个单一数值）才给自定义输入 */
+                  options.intervalMode === 'fixed' ? (
+                    <p className="text-[10.5px] leading-tight text-[var(--muted-foreground)]">
+                      {t('act_restart_wait_fixed', [options.fixedSeconds])}
+                    </p>
+                  ) : (
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="text-[10.5px] text-[var(--muted-foreground)]">{t('act_restart_wait')}</span>
+                      <div className="flex items-center gap-1">
+                        <IntField
+                          value={options.interactionRestartWait}
+                          min={0}
+                          ariaLabel={t('aria_restart_wait')}
+                          name="interactionRestartWait"
+                          onCommit={(v) => void patch({ interactionRestartWait: v })}
+                        />
+                        <span className="text-[10.5px] text-[var(--muted-foreground)]">{t('act_restart_wait_unit')}</span>
+                      </div>
                     </div>
-                  </div>
+                  )
                 ) : null}
               </div>
             ) : null}

@@ -205,6 +205,18 @@ if (!(!n?.status || t?.isInput && i.ignoreInputField) && Gh(n.status) && r?.doma
 - `pause`：保留 `count`，`prevStatus` 记录，`RESUME` 时回到原状态（ARP `mS`/`hS`/`gS`）。
 - `stop`：清会话（ARP 还会 `markRecentlyStopped` 以便"最近停止"列表，本扩展不需要该列表，故只清理）。
 
+### 5.2.1 restart 的等待秒数怎么取（ADR-026）
+
+`decideInteraction` 里的 `waitSeconds` 不直接取 `interactionRestartWait`，而是走
+`restartWaitSeconds(opt, fallback)`：
+
+| 间隔模式 | 等待秒数 | 理由 |
+| --- | --- | --- |
+| `fixed` | **`opt.fixedSeconds`** | 固定档只有一个明确的"当前间隔"，再单独填一个等待值属于重复配置，还容易配成两个不一致的数 |
+| `random` | `opt.interactionRestartWait` | 随机档没有单一数值（在 min..max 之间取），必须有一个独立值 |
+
+因此固定档下 `interactionRestartWait` **不参与运行**，面板也不再展示它的输入框
+（只显示只读提示 `按当前刷新间隔等待（N 秒）`）。
 ### 5.3 只在"刷新进行中"生效
 
 `Gh(status)` 在 ARP 里是 `['start','wait','countdown'].includes(status)`。

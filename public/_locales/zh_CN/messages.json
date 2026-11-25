@@ -8,6 +8,9 @@
   "act_restart_wait": {
     "message": "重新开始前等待"
   },
+  "act_restart_wait_fixed": {
+    "message": "按当前刷新间隔等待（$1 秒）"
+  },
   "act_restart_wait_unit": {
     "message": "秒"
   },

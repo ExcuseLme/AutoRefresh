@@ -35,12 +35,34 @@ describe('decideInteraction（A4 / A6 / A7 / T-13 / T-15 / T-16）', () => {
     expect(d?.action).toBe('pause');
   });
 
-  it('restart 带出等待秒数（T-13c）', () => {
+  it('restart 在随机档时用自定义等待秒数（T-13c）', () => {
     const d = decideInteraction(
-      { ...DEFAULT_OPTIONS, interactions: true, interactionAction: 'restart', interactionRestartWait: 5 },
+      {
+        ...DEFAULT_OPTIONS,
+        interactions: true,
+        interactionAction: 'restart',
+        interactionRestartWait: 5,
+        intervalMode: 'random',
+      },
       false,
     );
     expect(d).toEqual({ action: 'restart', waitSeconds: 5 });
+  });
+
+  it('restart 在固定档时直接用当前固定间隔（ADR-026：不让用户再填数字）', () => {
+    const d = decideInteraction(
+      {
+        ...DEFAULT_OPTIONS,
+        interactions: true,
+        interactionAction: 'restart',
+        interactionRestartWait: 5,
+        intervalMode: 'fixed',
+        fixedSeconds: 30,
+      },
+      false,
+    );
+    // 自定义值 5 被忽略，用固定间隔 30
+    expect(d).toEqual({ action: 'restart', waitSeconds: 30 });
   });
 });
 
