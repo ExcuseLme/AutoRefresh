@@ -6,7 +6,8 @@ import {
   setAutoDiscardable,
 } from '@/lib/keep-active-runtime';
 import type { ContentCommand, ContentEvent, ErrorCode, PopupCommand, StateSnapshot, TimerCommand, TimerEvent } from '@/lib/messages';
-import { armTimer, disarmTimer, ensureOffscreen, pingOffscreen } from '@/lib/offscreen-client';
+import { armTimer, disarmTimer, ensureOffscreen, pingOffscreen, stopBadgeWatch, watchBadge } from '@/lib/offscreen-client';
+import { badgeAppearance, BADGE_COLORS } from '@/lib/badge';
 import { DEFAULT_CLICK_ACTION, type ClickAction, type Options } from '@/lib/options';
 import {
   getSelectorForUrl,
@@ -93,22 +94,32 @@ export default defineBackground(() => {
     );
   }
 
+  /**
+   * 刷新徽章（ADR-031）。
+   *
+   * 语义：运行/等待中显示**倒计时**（`>=60s` 时 `{n}m`，否则秒数），暂停 `II`、失败 `!`。
+   * 每秒的跳动交给 offscreen 做（`watchBadge`），SW 自己只在状态切换时画一次。
+   */
   async function updateBadge(): Promise<void> {
-    // OQ-4：运行中绿点、暂停黄点、失败红叹号、停止清空
     for (const [tabId, s] of sessions) {
-      const failed = Boolean(s.lastError);
-      const text = failed ? '!' : s.status === 'start' ? '●' : s.status === 'pause' ? 'II' : '…';
-      const color = failed ? '#dc2626' : s.status === 'pause' ? '#f59e0b' : '#22c55e';
+      const { text, color } = badgeAppearance(s ?? null);
       try {
         await chrome.action.setBadgeText({ text, tabId });
         await chrome.action.setBadgeBackgroundColor({ color, tabId });
       } catch {
-        /* 忽略 */
+        /* 标签页已关闭等：忽略 */
+      }
+      if (s.status === 'start' || s.status === 'wait') {
+        // 交给 offscreen 每秒刷新；短于 1s 的间隔由 watchBadge 内部跳过
+        void watchBadge(tabId, s.armedAt + s.delayMs, s.delayMs);
+      } else {
+        void stopBadgeWatch(tabId);
       }
     }
   }
 
   async function clearBadge(tabId: number): Promise<void> {
+    void stopBadgeWatch(tabId);
     try {
       await chrome.action.setBadgeText({ text: '', tabId });
     } catch {
@@ -133,10 +144,12 @@ export default defineBackground(() => {
     if (!res?.ok) return { ok: false, code: 'err_page_unavailable' };
 
     pickerTabId = tabId;
-    // 让用户知道"现在处于拾取态"：徽章显示十字/放大镜语义的字符
+    // 让用户知道"现在处于拾取态"：徽章显示十字/放大镜语义的字符。
+    // 拾取期间暂停每秒倒计时刷新，否则 offscreen 会把 ⊕ 覆盖成秒数（ADR-031）
+    void stopBadgeWatch(tabId);
     try {
       await chrome.action.setBadgeText({ text: '⊕', tabId });
-      await chrome.action.setBadgeBackgroundColor({ color: '#6366f1', tabId });
+      await chrome.action.setBadgeBackgroundColor({ color: BADGE_COLORS.picking, tabId });
     } catch {
       /* 忽略 */
     }
@@ -231,18 +244,18 @@ export default defineBackground(() => {
     };
 
     if (flash) {
-      await set(flash, '#22c55e');
+      await set(flash, BADGE_COLORS.running);
       await sleep(1200);
     }
-    if (!s) {
-      await set('', '#22c55e');
-      return;
+
+    // ADR-031：与 updateBadge 同口径 —— 运行中显示倒计时，暂停 II，失败 !，无会话清空
+    const { text, color } = badgeAppearance(s ?? null);
+    await set(text, color);
+    if (s && (s.status === 'start' || s.status === 'wait')) {
+      void watchBadge(tabId, s.armedAt + s.delayMs, s.delayMs);
+    } else {
+      void stopBadgeWatch(tabId);
     }
-    const failed = Boolean(s.lastError);
-    if (failed) await set('!', '#dc2626');
-    else if (s.status === 'pause') await set('II', '#f59e0b');
-    else if (s.status === 'start') await set('●', '#22c55e');
-    else await set('…', '#22c55e');
   }
 
   function sleep(ms: number): Promise<void> {
@@ -457,6 +470,22 @@ export default defineBackground(() => {
     if (msg?.type === 'TICK_DONE') {
       const evt = msg as TimerEvent & { type: 'TICK_DONE' };
       void onTick(evt.tabId, evt.token);
+      sendResponse({ ok: true });
+      return false;
+    }
+    // offscreen 每秒一次：重画该标签页的徽章倒计时（ADR-031）
+    if (msg?.type === 'BADGE_TICK') {
+      const evt = msg as TimerEvent & { type: 'BADGE_TICK' };
+      const s = sessions.get(evt.tabId);
+      if (s) {
+        const { text, color } = badgeAppearance(s);
+        void chrome.action
+          .setBadgeText({ text, tabId: evt.tabId })
+          .catch(() => undefined);
+        void chrome.action
+          .setBadgeBackgroundColor({ color, tabId: evt.tabId })
+          .catch(() => undefined);
+      }
       sendResponse({ ok: true });
       return false;
     }

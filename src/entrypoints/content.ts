@@ -2,6 +2,7 @@ import type { ClickAction } from '@/lib/options';
 import type { ContentCommand, ContentEvent, SelectorProbe } from '@/lib/messages';
 import { describeElement, simulateClick } from '@/lib/dom-click';
 import { startPicker, stopPicker } from '@/lib/picker';
+import { highlightElement } from '@/lib/highlight';
 import { KEEP_ACTIVE_STORAGE_KEY } from '@/lib/keep-active';
 
 /**
@@ -92,7 +93,13 @@ export default defineContentScript({
       }
     }
 
-    /** 探测选择器（面板「测试」按钮用）：不点击，只回报命中数与元素摘要 */
+    /**
+     * 探测选择器（面板「测试选择器」按钮用）：不点击，只回报命中数与元素摘要。
+     *
+     * ADR-031：命中时把目标元素滚动到可见区并做一次呼吸高亮，
+     * 让用户确认自己选中的到底是哪个元素。只对**第一个**命中元素做 ——
+     * 选择器可能命中多个，页面上的"典型目标"就是第一个。
+     */
     function probeSelector(selector: string): SelectorProbe {
       const trimmed = selector.trim();
       if (!trimmed) return { result: 'not-found', count: 0 };
@@ -103,11 +110,16 @@ export default defineContentScript({
         return { result: 'invalid' };
       }
       if (nodes.length === 0) return { result: 'not-found', count: 0 };
-      return {
-        result: 'ok',
-        count: nodes.length,
-        preview: describeElement(nodes[0]!),
-      };
+
+      const first = nodes[0]!;
+      const preview = describeElement(first);
+      try {
+        highlightElement(first, nodes.length > 1 ? `${nodes.length} 个命中（第 1 个）` : preview);
+      } catch {
+        /* 高亮失败不影响探测结果 */
+      }
+
+      return { result: 'ok', count: nodes.length, preview };
     }
 
     /**

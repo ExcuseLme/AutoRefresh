@@ -82,3 +82,24 @@ export async function pingOffscreen(): Promise<boolean> {
   const res = await postToOffscreen<{ type: string; armed: number }>({ type: 'PING' });
   return res?.type === 'PONG';
 }
+
+/**
+ * 让 offscreen 每秒刷新该标签页的徽章倒计时（ADR-031）。
+ *
+ * @param dueAt  本轮到点的绝对时间戳（`Date.now()` 基准，与 Session 的 `armedAt + delayMs` 同源）
+ * @param delayMs 本轮时长，仅用于"是否值得启动 watch"的判断
+ */
+export async function watchBadge(tabId: number, dueAt: number, delayMs: number): Promise<boolean> {
+  // 短于一秒的间隔没有"每秒刷新"的意义，直接由 SW 画一次静态数字即可
+  if (delayMs < 1000) {
+    await stopBadgeWatch(tabId);
+    return false;
+  }
+  if (!(await ensureOffscreen())) return false;
+  const res = await postToOffscreen<{ ok: boolean }>({ type: 'BADGE_WATCH', tabId, dueAt });
+  return Boolean(res?.ok);
+}
+
+export async function stopBadgeWatch(tabId?: number): Promise<void> {
+  await postToOffscreen({ type: 'BADGE_UNWATCH', tabId });
+}

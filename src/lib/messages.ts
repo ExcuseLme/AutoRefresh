@@ -22,11 +22,22 @@ export type PopupCommand =
 export type TimerCommand =
   | { type: 'ARM'; tabId: number; token: string; delayMs: number }
   | { type: 'DISARM'; tabId?: number; token?: string }
-  | { type: 'PING' };
+  | { type: 'PING' }
+  /**
+   * 让 offscreen 每秒刷新该标签页的徽章倒计时（ADR-031）。
+   *
+   * 为什么由 offscreen 而不是 SW 来做：SW 空闲约 30s 就被回收，想每秒唤醒它代价太大
+   * （会持续阻止它休眠）。offscreen 文档在计时期间本来就是活的，它有 `chrome.action`
+   * 权限，直接写徽章即可，SW 全程可以睡着。
+   */
+  | { type: 'BADGE_WATCH'; tabId: number; dueAt: number }
+  | { type: 'BADGE_UNWATCH'; tabId?: number };
 
 /** offscreen → SW */
 export type TimerEvent =
   | { type: 'TICK_DONE'; tabId: number; token: string }
+  /** offscreen 每秒发一次，请求 SW 重画该标签页的徽章倒计时（ADR-031） */
+  | { type: 'BADGE_TICK'; tabId: number }
   | { type: 'PONG' };
 
 /** 内容脚本对选择器探测的回复（TEST_SELECTOR 用） */
