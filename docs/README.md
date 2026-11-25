@@ -83,6 +83,17 @@ Open Questions 的结论（已全部关闭）：
   （语义属性 → 短结构路径 → id → class → 兜底）；**不申请 `debugger` 权限**。
 - `2026-11-24` 测试 80 → **124**（新增 `tests/selector.test.ts`，`dom-click` 重写覆盖双击）。
   构建体积 293 → 304.7 KiB —— **不设体积门槛**（用户明确：自用扩展，不管体积）
+变更记录（第六轮，ADR-025）：
+- **修掉"面板宽度被 URL 撑开"的 bug**。根因是 ADR-023 只写了 `min-width: 400px` ——
+  Chrome popup 按内容自动算宽，`min-width` 只有下限没有上限，所以长 URL 会把整个面板顶宽，
+  导致切换页面时面板宽度来回跳。
+- 现在 `body`/`#root` 三个属性一起写死：`width` + `min-width` + `max-width` 均为 400px，
+  加 `overflow-x: hidden` 兜底。**面板宽度恒为 400px**。
+- 所有可能超长的行都 `truncate`（省略号）并挂原生 `title`：
+  `仅对当前页面生效：<pageKey>`、会话属于别的页面提示、选择器探测结果。
+  原生 tooltip 在页面之上绘制，不参与布局，不会反过来撑开面板。
+- 实测（逐个注入超长内容）：基线 / 500 字符 pageKey / 40 遍长状态行 / 300 字符 selector /
+  400 字符 URL —— `root.scrollWidth` **全部是 400**。
 变更记录（第五轮，ADR-024）：
 - **固定档预设 chip 移到数字同一行右侧**（原来右侧大片空白、chip 独占第二行）。
   stepper 宽度 168→**128px**，卡片 106→**74px**，内容区 `scrollHeight` 623→**591**。

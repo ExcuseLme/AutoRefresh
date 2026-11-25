@@ -115,13 +115,14 @@ export function RefreshTypeSection({
                 onChange={(e) => void setSelector(e.currentTarget.value)}
               />
 
-              {/* 所有辅助信息压成一行小字：页面隔离提示 / 探测结果 / 会话提示 */}
+              {/* 所有辅助信息压成一行小字：页面隔离提示 / 探测结果 / 会话提示
+                  ADR-025：每条都 truncate + title，超长 URL 不得把面板撑宽 */}
               <div className="flex flex-col gap-0.5 text-[10.5px] leading-tight">
                 <p className="truncate text-[var(--muted-foreground)]" title={pageKey ?? undefined}>
                   {pageKey ? t('selector_scope_hint', [pageKey]) : t('selector_scope_unavailable')}
                 </p>
                 {probeState.kind === 'ok' ? (
-                  <p className="truncate text-[var(--primary)]">
+                  <p className="truncate text-[var(--primary)]" title={`${t('selector_test_ok', [probeState.count])}${probeState.preview}`}>
                     {t('selector_test_ok', [probeState.count])}
                     <span className="font-mono">{probeState.preview}</span>
                   </p>
@@ -130,7 +131,9 @@ export function RefreshTypeSection({
                   <p className="text-[var(--destructive)]">{probeState.message}</p>
                 ) : null}
                 {sessionElsewhere ? (
-                  <p className="text-[var(--muted-foreground)]">{t('selector_session_elsewhere', [sessionPageKey ?? ''])}</p>
+                  <p className="truncate text-[var(--muted-foreground)]" title={sessionPageKey ?? undefined}>
+                    {t('selector_session_elsewhere', [sessionPageKey ?? ''])}
+                  </p>
                 ) : null}
               </div>
             </div>

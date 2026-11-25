@@ -71,10 +71,23 @@
     padding: 0;
   }
 
-  /* ADR-023：面板宽度从 ARP 的 480px 收到 400px，配合紧凑布局 */
+  /*
+   * ADR-025：面板宽度**固定**为 400px。
+   *
+   * 原来只写了 `min-width: 400px`（ADR-023 从 ARP 的 480 收窄）。但 Chrome popup 的
+   * 宽度是按内容自动算的，`min-width` 只有下限没有上限 ⇒ 内容里只要有一行超长文本
+   * （典型：`仅对当前页面生效：<很长很长的 URL>`），整个面板就被撑宽。
+   * 结果是"在长 URL 页面打开面板更宽、切换页面时宽度来回跳"。
+   *
+   * 所以这里必须写死 `width` + `max-width`，再配 `overflow-x: hidden` 兜底：
+   * 超长文本一律在各自元素内 `truncate`（省略号），靠 `title` 悬浮看全文。
+   */
   body,
   #root {
+    width: 400px;
     min-width: 400px;
+    max-width: 400px;
+    overflow-x: hidden;
     background-color: var(--background);
     color: var(--foreground);
     font-family: var(--font-sans);
