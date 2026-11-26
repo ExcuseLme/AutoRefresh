@@ -160,6 +160,23 @@
   - 下方一行说明随选项变化（`click_single_desc` / `click_double_desc`）。
   - 该分段只在 `refreshType === 'xhr'` 时出现（整页刷新没有"点哪儿"的问题）。
 
+### 4.2.1 触发方式（单击/双击）独立于 selector（ADR-035）
+
+| 用户操作 | 结果 |
+| --- | --- |
+| 没有任何 selector 时点「双击」 | **立即生效并落库**（`{action:'double', selector:''}`） |
+| 之后再去拾取元素 | 拾取结果沿用已设的 `double`（`applyPickerResult` 读 existing.action） |
+| 清空 selector 输入框 | 只清 selector，**触发方式保留** |
+| 切换页面 | 每个页面各自的触发方式互不影响 |
+
+**回显链路**（这是"卡"的根因所在）：
+```
+点按钮 → SW 写 storage → chrome.storage.onChanged 广播（实测 5ms）
+      → watchPageSelectors 回调 → setPageSelector → 界面更新
+```
+之前这条链路是断的：`pageSelectors` 变化没有任何订阅，只能等 500ms 的 `GET_STATE` 轮询。
+另外 UI 有乐观更新（`pendingAction`），点下去先本地变色，真实值追上后再丢弃临时值。
+
 ### 4.3 选项段落（可折叠，默认展开；记住折叠状态）
 
 | 行 | 标题 | 副标题 | 控件 | 展开内容 |

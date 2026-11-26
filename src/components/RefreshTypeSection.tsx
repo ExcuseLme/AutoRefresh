@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { SegmentedControl } from './ui';
 
 import { t } from '@/lib/i18n';
@@ -58,9 +58,33 @@ export function RefreshTypeSection({
   const current = TYPE_ITEMS.find((i) => i.value === options.refreshType) ?? TYPE_ITEMS[0]!;
   const [probeState, setProbeState] = useState<ProbeState>({ kind: 'idle' });
   const [picking, setPicking] = useState(false);
+  /**
+   * 乐观的触发方式（ADR-035）。
+   *
+   * `action` 的真实来源是 `pageSelector.action`，要经过
+   * 「点按钮 → SW 写 storage → storage.onChanged 广播 → setState」这一圈才回流，
+   * 期间控件会停留在旧值上 ⇒ 用户感觉"点了要等一下才变色"。
+   * 这里点下去就先本地生效，等真实的 `pageSelector.action` 追上来了再丢弃这个临时值。
+   */
+  const [pendingAction, setPendingAction] = useState<ClickAction | null>(null);
 
   const selector = pageSelector?.selector ?? '';
-  const action: ClickAction = pageSelector?.action ?? 'single';
+  const storedAction: ClickAction = pageSelector?.action ?? 'single';
+  const action: ClickAction = pendingAction ?? storedAction;
+
+  // 真实值追上来（或换了页面）就清掉临时值
+  useEffect(() => {
+    if (pendingAction !== null && pendingAction === storedAction) setPendingAction(null);
+  }, [pendingAction, storedAction]);
+
+  const onActionChange = (next: ClickAction): void => {
+    if (next === action) return;
+    setPendingAction(next);
+    void setAction(next).then((res) => {
+      // 写失败就回退，别让界面停在没落库的状态
+      if (!res.ok) setPendingAction(null);
+    });
+  };
   const sessionElsewhere = sessionPageKey !== null && pageKey !== null && sessionPageKey !== pageKey;
 
   const onTest = async () => {
@@ -148,7 +172,7 @@ export function RefreshTypeSection({
                   value={action}
                   ariaLabel={t('click_action')}
                   items={ACTION_ITEMS.map((i) => ({ value: i.value, label: t(i.labelKey) }))}
-                  onChange={(v) => void setAction(v as ClickAction)}
+                  onChange={(v) => onActionChange(v as ClickAction)}
                 />
               </div>
               <p className="min-w-0 flex-1 text-[10.5px] leading-tight text-[var(--muted-foreground)]">

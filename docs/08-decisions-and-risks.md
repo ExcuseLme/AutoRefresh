@@ -644,6 +644,45 @@
     `pausedRemainMs` 不变；继续后 `status=start`、剩余约为暂停时的值（**不是** 10 秒整、
     也**没有**立即刷新）。
   - 120s 间隔实测：暂停 `pausedRemainMs≈82.7s`，继续后 `remainMs≈77.7s`（接着数）。
+
+### ADR-035 · 触发方式独立于 selector；per-page 配置走 storage 广播即时回显
+
+- **背景**（用户两个 bug 报告）：
+  1. "在 `触发方式` 中点击 `单击` 或 `双击` 进行模式切换时感觉很卡，要等一会儿才更新为目标状态"
+  2. "在填写 xhr 刷新的目标元素 selector 之前似乎无法切换 `触发方式`"
+- **两个 bug 同源**：`action`（单击/双击）与 `selector` 被绑在同一条 per-page 记录里，
+  而且读的时候有一句 `if (!entry.selector) return null` —— 只设了触发方式、还没拾取元素的页面
+  被直接判成"没配置"；写的时候 `setClickActionForTab` 也在 `if (!existing) return { ok: true }`
+  直接返回**不写库**。于是"点了双击完全没反应"。
+
+- **修法 1（数据层）**：把触发方式从"必须依附 selector"解耦。
+  - `getPageEntry` 不再因为 `selector` 为空就返回 null
+  - `setPageEntry` 清空 selector 时**保留记录**（只清 selector，不动 action）；
+    从未配置过的页面写空 selector 仍不建空壳
+  - 新增 `setActionEntry` / `setActionForUrl` / `getEntryByKey`：
+    只改触发方式、不需要已有 selector
+  - `setClickActionForTab` 改走 `setActionForUrl`，不再"没 selector 就什么都不做"
+  - `sanitizePageSelectors` 保留 selector 为空但 action 有效的条目
+
+- **修法 2（回显路径）**：`pageSelectors` 的变化**之前没有任何订阅**，
+  面板只能等 500ms 一次的 `GET_STATE` 轮询才看到新值 —— 这就是"卡"的原因。
+  - 用已有的 `watchPageSelectors`（之前写了但**没人调用**）订阅 `chrome.storage.onChanged`，
+    一到就重算当前页面的记录
+  - 用 `useRef` 存 `pageKey`（订阅只挂一次，闭包捕获会永远停在首屏那个值）
+  - UI 再加一层**乐观更新**（`pendingAction`）：点下去本地先变色，等真实值追上来再丢弃临时值，
+    写失败则回退。这样即使 storage 广播有几毫秒延迟，视觉上也是即时的
+
+- **验证**：
+  - 单测 `tests/action-independence.test.ts`（9 例）：无 selector 时可写/可读触发方式、
+    先设触发方式后填 selector 两者都保留、清空 selector 不带走 action、
+    两个入口结论一致、两种触发方式互切、跨页面互不影响。
+  - 浏览器实测：
+    | 项 | 结果 |
+    | --- | --- |
+    | 无 selector 时写「双击」 | `CLICK_ACTION_SET` 9ms 返回，落库 `{action:'double', selector:''}` |
+    | storage 广播延迟 | **5ms** |
+    | 真实 UI 点「双击」到 aria-selected 变化 | **21ms**（之前要等 ≤500ms 轮询） |
+    | 互切 double→single→double | 三次都正确落库 |
 ## 2. 开放问题（**已全部关闭**，结论见下表；实现按结论落地）
 
 | ID | 问题 | 结论（用户已确认或已采纳默认） | 落地 |
@@ -709,3 +748,4 @@
 | 2026-11-25 | **ADR-031**（测试选择器滚动+呼吸高亮；图标实时倒计时；v0.2.1 → v0.3.0） | lead |
 | 2026-11-25 | **ADR-032**（交互只留两档：稳定刷新 / 输入框占用时暂停；schema v3→v4；v0.3.0 → v0.4.0） | lead |
 | 2026-11-25 | **ADR-033**（readOnly/disabled 输入框不算占用）+ **ADR-034**（暂停记住剩余时间；v0.4.0 → v0.4.1） | lead |
+| 2026-11-26 | **ADR-035**（触发方式独立于 selector；per-page 配置走 storage 广播即时回显；v0.4.1 → v0.5.0） | lead |

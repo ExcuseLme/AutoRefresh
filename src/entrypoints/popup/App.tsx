@@ -1,8 +1,8 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { t } from '@/lib/i18n';
 import type { PopupCommand, StateSnapshot } from '@/lib/messages';
 import { DEFAULT_OPTIONS, type ClickAction, type Options } from '@/lib/options';
-import type { PageSelectorEntry } from '@/lib/page-selectors';
+import { getEntryByKey, watchPageSelectors, type PageSelectorEntry } from '@/lib/page-selectors';
 import type { Session } from '@/lib/session';
 import { watchOptions } from '@/lib/storage';
 import { Header } from '@/components/Header';
@@ -34,9 +34,31 @@ export default function App() {
     setSession(snap.session);
     setTabUrl(snap.tabUrl);
     setPageSelector(snap.pageSelector);
+    pageKeyRef.current = snap.pageKey;
     setPageKey(snap.pageKey);
     setSessionPageKey(snap.sessionPageKey);
   };
+
+  /**
+   * 当前页面的 pageKey，供 storage 监听回调使用。
+   *
+   * 用 ref 而不是闭包捕获：`watchPageSelectors` 只在挂载时订阅一次，
+   * 若直接捕获 `pageKey` 会永远是首屏那个值。
+   */
+  const pageKeyRef = useRef<string | null>(null);
+
+  /**
+   * per-page 配置变化时立即回显（ADR-035）。
+   *
+   * 这是"点单击/双击感觉很卡"的直接原因修复：之前 `pageSelectors` 的变化**没有任何订阅**，
+   * 面板只能等 500ms 那次 `GET_STATE` 轮询才看到新值 ⇒ 点了要等一下才变色。
+   * 现在 storage.onChanged 一到就把当前页面的记录算出来，延迟降为「一次 storage 广播」。
+   */
+  useEffect(() => {
+    return watchPageSelectors((map) => {
+      setPageSelector(getEntryByKey(map, pageKeyRef.current));
+    });
+  }, []);
 
   // 首屏拉一次状态
   useEffect(() => {
@@ -51,6 +73,7 @@ export default function App() {
       const snap = await send<StateSnapshot>({ type: 'GET_STATE', tabId: id });
       if (snap) {
         setOptions(snap.options);
+        // applySnapshot 内部已经把 pageKey 同步到 ref 与 state
         applySnapshot(snap);
       }
       setReady(true);

@@ -56,16 +56,32 @@ export function pageKeyOf(url: string | undefined | null): string | null {
   return `${parsed.protocol}//${host}${path}`;
 }
 
-/** 取某个页面的配置（没有就是 null，绝不回落到别的页面） */
+/**
+ * 取某个页面的配置（没有就是 null，绝不回落到别的页面）。
+ *
+ * ADR-035：**selector 为空也算"有配置"**。触发方式（单击/双击）与 selector 是两个
+ * 互相独立的偏好，用户可以先定好触发方式再填 selector —— 早返回 null 会让面板
+ * 永远读不到 action，表现为"点了双击没反应"。
+ */
 export function getPageEntry(map: PageSelectorMap | undefined, url: string | undefined): PageSelectorEntry | null {
   const key = pageKeyOf(url);
   if (!key || !map) return null;
-  const entry = map[key];
-  if (!entry || !entry.selector) return null;
-  return entry;
+  return getEntryByKey(map, key);
 }
 
-/** 写入/覆盖某个页面的配置，返回新 map（不修改入参） */
+/** 已知 pageKey 时直接取（面板里少做一次 URL 解析） */
+export function getEntryByKey(map: PageSelectorMap | undefined, key: string | null): PageSelectorEntry | null {
+  if (!key || !map) return null;
+  const entry = map[key];
+  return entry ? { selector: entry.selector, action: entry.action, updatedAt: entry.updatedAt } : null;
+}
+
+/**
+ * 写入/覆盖某个页面的配置，返回新 map（不修改入参）。
+ *
+ * ADR-035：selector 为空时**保留这条记录**（清空 selector 只清 selector，
+ * 不动触发方式）。之前是直接删记录，会把用户设好的「双击」一起丢掉。
+ */
 export function setPageEntry(
   map: PageSelectorMap | undefined,
   url: string | undefined,
@@ -78,13 +94,30 @@ export function setPageEntry(
   const trimmed = selector.trim().slice(0, MAX_SELECTOR_LEN);
   const next: PageSelectorMap = { ...(map ?? {}) };
 
-  if (!trimmed) {
-    // 清空 = 删除这个页面的记录（不留空壳，避免 UI 出现"选中了但没 selector"）
-    delete next[key];
-    return next;
-  }
+  // 从未配置过、也没写 selector：不建空壳（避免每个页面都留一条空记录）
+  if (!trimmed && !next[key]) return next;
 
   next[key] = { selector: trimmed, action, updatedAt: Date.now() };
+  return enforceCapacity(next);
+}
+
+/**
+ * 只改某个页面的触发方式（ADR-035）。
+ *
+ * 与 `setPageEntry` 的区别：**不需要已有 selector**。用户可以先切「双击」，
+ * 之后再去拾取元素 —— 拾取时 `applyPickerResult` 会读到这里的 action 一并写入。
+ */
+export function setActionEntry(
+  map: PageSelectorMap | undefined,
+  url: string | undefined,
+  action: ClickAction,
+): PageSelectorMap {
+  const key = pageKeyOf(url);
+  if (!key) return map ?? {};
+
+  const next: PageSelectorMap = { ...(map ?? {}) };
+  const existing = next[key];
+  next[key] = { selector: existing?.selector ?? '', action, updatedAt: Date.now() };
   return enforceCapacity(next);
 }
 
@@ -109,8 +142,9 @@ export function sanitizePageSelectors(raw: unknown): PageSelectorMap {
     if (typeof value !== 'object' || value === null) continue;
     const v = value as Record<string, unknown>;
     const selector = typeof v.selector === 'string' ? v.selector.trim() : '';
-    if (!selector || selector.length > MAX_SELECTOR_LEN) continue;
+    if (selector.length > MAX_SELECTOR_LEN) continue;
     if (pageKeyOf(key) !== key) continue; // key 本身必须是合法 pageKey
+    // ADR-035：selector 可以为空（用户只设了触发方式还没拾取元素），保留这条记录
     const action: ClickAction = v.action === 'double' ? 'double' : 'single';
     const updatedAt = typeof v.updatedAt === 'number' && Number.isFinite(v.updatedAt) ? v.updatedAt : 0;
     out[key] = { selector, action, updatedAt };
@@ -131,13 +165,23 @@ export async function getSelectorForUrl(url: string | undefined): Promise<PageSe
   return getPageEntry(await loadPageSelectors(), url);
 }
 
-/** 写某个页面的配置（空 selector 等于删除该页记录） */
+/** 写某个页面的配置（ADR-035：清空 selector 只清 selector，保留触发方式） */
 export async function setSelectorForUrl(
   url: string | undefined,
   selector: string,
   action: ClickAction,
 ): Promise<PageSelectorMap> {
   const next = setPageEntry(await loadPageSelectors(), url, selector, action);
+  await chrome.storage.local.set({ [PAGE_SELECTORS_KEY]: next });
+  return next;
+}
+
+/** 只改某个页面的触发方式（ADR-035：不需要已有 selector） */
+export async function setActionForUrl(
+  url: string | undefined,
+  action: ClickAction,
+): Promise<PageSelectorMap> {
+  const next = setActionEntry(await loadPageSelectors(), url, action);
   await chrome.storage.local.set({ [PAGE_SELECTORS_KEY]: next });
   return next;
 }

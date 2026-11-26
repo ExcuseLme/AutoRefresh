@@ -377,6 +377,19 @@ T-43（浏览器重启）、T-46（与 ARP 并存）。这三项的代码路径�
 | 暂停期间不刷新 | ✅ | 暂停 5 秒后 `count` 无变化、`pausedRemainMs` 不变、`status` 仍 `pause` |
 | 面板显示剩余 | ✅ | `已暂停 · 第 N 次 · 剩余 X 秒`（`status_paused_remain`） |
 
+### 触发方式独立 + 即时回显（ADR-035，第十五轮，v0.5.0）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| 无 selector 时可切触发方式 | ✅ | `CLICK_ACTION_SET` 返回 `ok`，落库 `{action:'double', selector:''}` |
+| 写入延迟 | ✅ | 9ms 返回 |
+| storage 广播延迟 | ✅ | **5ms**（`onChanged` 实测） |
+| 真实 UI 点击 → 界面更新 | ✅ | 点「双击」后 `aria-selected` 变化耗时 **21ms**（修复前 ≤500ms） |
+| 互切 single↔double | ✅ | 三次切换全部正确落库 |
+| 清空 selector 不带走触发方式 | ✅ | 单测：`setPageEntry` 传空 selector 后 `action` 仍在 |
+| 先设触发方式后填 selector | ✅ | 单测：两者都保留 |
+| 跨页面互不影响 | ✅ | 单测：a.com/x 与 b.com/x 各自 action 独立 |
+
 ### 回归
 
 | 用例 | 结果 | 证据 |

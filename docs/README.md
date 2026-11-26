@@ -83,6 +83,17 @@ Open Questions 的结论（已全部关闭）：
   （语义属性 → 短结构路径 → id → class → 兜底）；**不申请 `debugger` 权限**。
 - `2026-11-24` 测试 80 → **124**（新增 `tests/selector.test.ts`，`dom-click` 重写覆盖双击）。
   构建体积 293 → 304.7 KiB —— **不设体积门槛**（用户明确：自用扩展，不管体积）
+变更记录（第十五轮，ADR-035）：v0.4.1 → **v0.5.0**
+- **修「触发方式切换很卡」**：`pageSelectors` 的变化**之前没有任何订阅**，
+  面板只能等 500ms 一次的 `GET_STATE` 轮询才看到新值。
+  现在用 `watchPageSelectors`（这函数早就写了但没人调用）订阅 `storage.onChanged`，
+  广播 5ms 就到；UI 再加一层乐观更新，点下去本地立即变色。
+  实测：点「双击」到界面状态变化 **21ms**（之前 ≤500ms）。
+- **修「没填 selector 就不能切触发方式」**：`action` 和 `selector` 被绑死在同一条记录上，
+  且 `if (!entry.selector) return null` + `if (!existing) return {ok:true}`（不写库）
+  ⇒ 点了双击完全没反应。现在两者解耦：新增 `setActionForUrl`，
+  没有 selector 也能写触发方式；清空 selector 也不会把触发方式带走。
+- 新增 `tests/action-independence.test.ts`（9 例）。测试 198 → **207**。
 变更记录（第十四轮，ADR-033 + ADR-034）：v0.4.0 → **v0.4.1**
 - **修 `输入框占用时暂停` 误判（ADR-033）**：Bitbucket PR 页面有一个 `readonly` 的
   `<input class="clone-url-input">`，value 永远是 clone 地址。原实现只排除 `disabled`

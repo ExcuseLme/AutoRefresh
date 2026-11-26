@@ -12,6 +12,7 @@ import { DEFAULT_CLICK_ACTION, type ClickAction, type Options } from '@/lib/opti
 import {
   getSelectorForUrl,
   pageKeyOf,
+  setActionForUrl,
   setSelectorForUrl,
 } from '@/lib/page-selectors';
 import { probeSelector, runRefresh, sendToContent } from '@/lib/refresh';
@@ -204,7 +205,15 @@ export default defineBackground(() => {
     return next ? { ok: true } : { ok: true };
   }
 
-  /** 面板里改触发方式：只改当前页面那条记录的 action，selector 为空时不建记录 */
+  /**
+   * 面板里改触发方式（ADR-035）。
+   *
+   * **不需要已有 selector**：单击/双击是与 selector 平行的独立偏好，
+   * 用户完全可以先定好触发方式、再去拾取元素。之前这里在没有 selector 时直接
+   * `return { ok: true }` 而不写库，导致面板点了"双击"看起来完全没反应。
+   *
+   * 拾取元素时 `applyPickerResult` 会读到这里的 action 一并写入，两者不冲突。
+   */
   async function setClickActionForTab(
     tabId: number,
     action: ClickAction,
@@ -212,12 +221,7 @@ export default defineBackground(() => {
     const tab = await chrome.tabs.get(tabId).catch(() => null);
     const key = pageKeyOf(tab?.url);
     if (!tab || !key) return { ok: false, code: 'err_page_unavailable' };
-    const existing = await getSelectorForUrl(tab.url);
-    if (!existing) {
-      // 还没有 selector：不建空壳记录，用户的点击方式等拾取到 selector 时一并写入
-      return { ok: true };
-    }
-    await setSelectorForUrl(tab.url, existing.selector, action);
+    await setActionForUrl(tab.url, action);
     return { ok: true };
   }
 

@@ -95,11 +95,18 @@ describe('getPageEntry / setPageEntry', () => {
     expect(getPageEntry(map, 'https://a.com/x')?.selector).toBe('.new');
   });
 
-  it('传空 selector = 删除该页记录（不留空壳）', () => {
-    let map = setPageEntry({}, 'https://a.com/x', '.btn', 'single');
-    map = setPageEntry(map, 'https://a.com/x', '   ', 'single');
+  it('清空 selector 保留记录与触发方式（ADR-035）', () => {
+    let map = setPageEntry({}, 'https://a.com/x', '.btn', 'double');
+    map = setPageEntry(map, 'https://a.com/x', '   ', 'double');
+    // 记录还在（触发方式不该被清 selector 带走），但 selector 为空
+    expect(Object.keys(map)).toHaveLength(1);
+    expect(getPageEntry(map, 'https://a.com/x')?.selector).toBe('');
+    expect(getPageEntry(map, 'https://a.com/x')?.action).toBe('double');
+  });
+
+  it('从未配置过的页面写空 selector 不建空壳', () => {
+    const map = setPageEntry({}, 'https://a.com/x', '', 'single');
     expect(Object.keys(map)).toHaveLength(0);
-    expect(getPageEntry(map, 'https://a.com/x')).toBeNull();
   });
 
   it('selector 前后空白被 trim', () => {
@@ -161,15 +168,17 @@ describe('sanitizePageSelectors（逐条校验脏数据）', () => {
     expect(sanitizePageSelectors([])).toEqual({});
   });
 
-  it('丢弃非法 key 与空 selector，保留好的条目', () => {
+  it('丢弃非法 key，但保留 selector 为空的有效条目（ADR-035）', () => {
     const out = sanitizePageSelectors({
       'https://a.com/x': { selector: '.ok', action: 'single', updatedAt: 1 },
       'not-a-key': { selector: '.bad', action: 'single', updatedAt: 2 },
-      'https://a.com/y': { selector: '', action: 'single', updatedAt: 3 },
+      'https://a.com/y': { selector: '', action: 'double', updatedAt: 3 },
       'https://a.com/z': 'i am not an object',
     });
-    expect(Object.keys(out)).toEqual(['https://a.com/x']);
+    expect(Object.keys(out).sort()).toEqual(['https://a.com/x', 'https://a.com/y']);
     expect(out['https://a.com/x']?.selector).toBe('.ok');
+    // 只有触发方式、还没拾取元素的页面也要能读回来
+    expect(out['https://a.com/y']?.action).toBe('double');
   });
 
   it('action 脏值回落 single', () => {
