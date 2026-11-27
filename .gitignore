@@ -3,5 +3,7 @@ node_modules/
 .output/
 dist/
 *.zip
+*.pem
+.key
 .tmp/
 coverage/

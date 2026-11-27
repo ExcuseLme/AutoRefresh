@@ -11,6 +11,10 @@ export default defineConfig({
     default_locale: 'zh_CN',
     // 版本号**只在这里之外维护**：单一真源是 package.json，WXT 自动读取。
     // 不要在此硬写 version —— 两处各写一份必然漂移（ADR-029）。
+    // 公钥：固定扩展 ID（与工程所在路径脱钩）。
+    // 私钥在同级密钥库 D:\data\chrome-ext-secret-keys\AutoRefresh.pem，绝不入库。
+    // 扩展 ID = dfiecgpgeeafbclbbgbpnidcgeoifmje
+    key: 'MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAzEbOGxgUcxSqrYOgl8NKKj7n0QiUg4l3+HFmrzDFASz5E8gv77GeaJ86MgWux3HiuQmZrYgZw+izNYNZCRS17rAahBNjNN8zcTtUwtUf8/xenB9JSCM31+C/p0Cpsg40VUAGs17JWAc/b+gFMGZvAVrSC55Tu0p9MClKAEeIxlbuYLU+ziCYtWOgNFeHMNe0sdyQlZ8NNyHSqWOo4mTEldfRL6rUH4IiQQFhhNfxiWqX1QqN8xYGsvTmhrDnbjiqaePb9AzJaWiBwKhjqVzYoyTu8hKK534g5JydUv1KNJmI+oDK4htZOnhjON+6irELRbCuuYLqxq3vzaqI4OP8iwIDAQAB',
     icons: {
       16: 'icon/16.png',
       32: 'icon/32.png',
