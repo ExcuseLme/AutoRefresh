@@ -194,3 +194,23 @@ export type Session = {
    （`storage.onChanged` 会广播，所以读是安全的）。
 2. `OPTIONS_PATCH` 需做 **字段级合并 + 校验后再落库**；任何字段非法则整条 patch 拒绝并返回错误。
 3. 会话写操作全部经 `sessionStore` 单点，禁止直接 `storage.session.set`（防止并发写覆盖）。
+
+
+## 8. per-page 配置表（ADR-037）
+
+`chrome.storage.local` 里现在有**两张互不相干的表**：
+
+| 键 | 内容 | 谁管 |
+| --- | --- | --- |
+| `pageOptions` | 每个页面的**完整配置**（`{ options: Options, updatedAt }`） | `lib/page-options.ts`（"怎么刷"） |
+| `pageSelectors` | 每个页面的 **selector + 触发方式**（`{ selector, action, updatedAt }`） | `lib/page-selectors.ts`（"点哪个元素"） |
+
+**没有全局 `options` 键了**（`ensureReady` 会删掉历史遗留的那份）。
+
+隔离粒度两者一致：`pageKeyOf(url)` = `协议//主机路径`，忽略 query 与 `#hash`。
+同一页可能只有其中一张表有记录，二者独立判定：
+
+- `pageOptions` 没记录 ⇒ 该页用 `DEFAULT_OPTIONS`（读取时自动建一条）
+- `pageSelectors` 没记录 ⇒ 该页没配点击目标（XHR 模式下会报 `xhr_no_selector`）
+
+容量：两张表都是 300 页上限，超出按 `updatedAt` 最旧的淘汰（R25）。

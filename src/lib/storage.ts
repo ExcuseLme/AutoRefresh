@@ -1,52 +1,10 @@
-import { DEFAULT_OPTIONS, type Options } from './options';
-import { migrate, needsMigration } from './validate';
-
-const KEY = 'options';
-
 /**
- * 读全局配置（缺失/脏数据自动迁移到默认值）。
+ * 面板的纯 UI 偏好（本地存储，不进配置、不参与 per-page 隔离）。
  *
- * v1 → v2 的迁移结果**回写一次**（ADR-021）：否则每次读取都要重跑迁移，
- * 而且用户看 storage 里永远是旧 schema，排查问题时会困惑。
- * 回写失败不影响本次读取（内存里已经是迁移后的值）。
+ * ADR-037：**全局配置的读写已全部移除** —— 所有配置都按页面（URL）存在
+ * `lib/page-options.ts` 的 `pageOptions` 表里，没有"全局 options"这回事了。
+ * 这里只留与功能无关的界面偏好（折叠状态），它天然应当全局面板共享。
  */
-export async function getOptions(): Promise<Options> {
-  const raw = await chrome.storage.local.get(KEY);
-  const next = migrate(raw[KEY]);
-  if (needsMigration(raw[KEY])) {
-    try {
-      await chrome.storage.local.set({ [KEY]: next });
-    } catch {
-      /* 忽略：本次读取已用迁移后的值 */
-    }
-  }
-  return next;
-}
-
-/** 写全局配置（调用方必须已完成校验） */
-export async function setOptions(next: Options): Promise<void> {
-  await chrome.storage.local.set({ [KEY]: next });
-}
-
-export async function resetOptions(): Promise<Options> {
-  const next = { ...DEFAULT_OPTIONS };
-  await setOptions(next);
-  return next;
-}
-
-/** 监听全局配置变化（所有上下文共享通道） */
-export function watchOptions(cb: (next: Options) => void): () => void {
-  const listener = (
-    changes: Record<string, chrome.storage.StorageChange>,
-    area: chrome.storage.AreaName,
-  ) => {
-    if (area !== 'local' || !(KEY in changes)) return;
-    cb(migrate(changes[KEY]?.newValue));
-  };
-  chrome.storage.onChanged.addListener(listener);
-  return () => chrome.storage.onChanged.removeListener(listener);
-}
-
 // ── 面板折叠状态属于纯 UI 偏好，放 localStorage，不进 options（docs/04 §4.3）
 const COLLAPSE_KEY = 'ui:options-section-collapsed';
 

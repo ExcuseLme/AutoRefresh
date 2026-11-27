@@ -6,7 +6,8 @@ export type PopupCommand =
   | { type: 'STOP'; tabId: number }
   | { type: 'PAUSE'; tabId: number }
   | { type: 'RESUME'; tabId: number }
-  | { type: 'OPTIONS_PATCH'; patch: Partial<Options> }
+  /** ADR-037：配置按页面存，patch 必须指明落到哪个标签页那一页 */
+  | { type: 'OPTIONS_PATCH'; tabId: number; patch: Partial<Options> }
   | { type: 'GET_STATE'; tabId: number }
   | { type: 'TEST_SELECTOR'; tabId: number; selector: string }
   /** 进入元素拾取模式（ADR-018） */

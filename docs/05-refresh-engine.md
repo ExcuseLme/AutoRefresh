@@ -277,6 +277,24 @@ for 每个会话：
 
 注意：重置**不刷新一轮**，只是从 0 开始新的倒计时。"立即刷新"与"立即重新倒计时"是两件事。
 
+### 5.5 配置来源：会话锁定那一页（ADR-037）
+
+每轮刷新用的配置**不是全局的**，而是"这个会话启动时那一页"的：
+
+```
+executeRound:
+    cfg = await configForPageKey(s.pageKey)     // 锁定值，不是当前 tab.url
+    runRefresh({ refreshType: cfg.refreshType, hardRefresh: cfg.hardRefresh, ... })
+    confirmStarted(s, nextDelayMs(cfg, s.prevDelayMs))
+```
+
+同理 `confirmStarted` / `resume` / `rearmSessionsForIntervalChange` / `onInputHold`
+全部通过 `cfgOf(session)` 取配置。SW 里的 `options` 变量只是"最近一次活跃页面"的缓存，
+**不参与任何间隔计算** —— 否则 A 页的会话会被 B 页的配置带偏。
+
+`rearmSessionsForIntervalChange(pageKey)` 额外按 `s.pageKey !== pageKey` 过滤：
+只有被改的那一页的会话才重置倒计时。
+
 ## 6. 让页面在后台保持活动（A2）
 
 三层机制，缺一不可：

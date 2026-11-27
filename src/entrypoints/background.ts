@@ -8,7 +8,7 @@ import {
 import type { ContentCommand, ContentEvent, ErrorCode, PopupCommand, StateSnapshot, TimerCommand, TimerEvent } from '@/lib/messages';
 import { armTimer, disarmTimer, ensureOffscreen, pingOffscreen, stopBadgeWatch, watchBadge } from '@/lib/offscreen-client';
 import { badgeAppearance, BADGE_COLORS } from '@/lib/badge';
-import { DEFAULT_CLICK_ACTION, type ClickAction, type Options } from '@/lib/options';
+import { DEFAULT_CLICK_ACTION, DEFAULT_OPTIONS, type ClickAction, type Options } from '@/lib/options';
 import {
   getSelectorForUrl,
   pageKeyOf,
@@ -19,7 +19,7 @@ import { probeSelector, runRefresh, sendToContent } from '@/lib/refresh';
 import { createSession, type Session } from '@/lib/session';
 import { acceptsInteraction, canPause, canResume } from '@/lib/session-machine';
 import { loadSessions, saveSessions } from '@/lib/session-store';
-import { getOptions, setOptions, watchOptions } from '@/lib/storage';
+import { dropLegacyGlobalOptions, getOptionsForPage, setOptionsForPage, watchPageOptions } from '@/lib/page-options';
 import { reachedLimit, isRefreshableUrl } from '@/lib/url';
 import { applyPatch } from '@/lib/validate';
 
@@ -27,8 +27,35 @@ export default defineBackground(() => {
   // ────────────────────────────────────────────────────────────── 状态
 
   const sessions = new Map<number, Session>();
-  let options: Options;
+  /**
+   * 当前标签页那一份配置（ADR-037）。
+   *
+   * SW 里不再有"全局 options"这回事 —— 所有配置都按页面（pageKey）存。
+   * 这个变量只作**缓存**，值 = 「最近一次 GET_STATE / OPTIONS_PATCH / 会话启动时
+   * 那个 activeTab 对应的页面配置」，用于 START 等没有显式带上 pageKey 的路径。
+   */
+  let options: Options = { ...DEFAULT_OPTIONS };
   let ready: Promise<void> | null = null;
+
+  /** 会话锁定页面的配置（ADR-037：整轮刷新都用**启动时那一页**的配置）。 */
+  const tabConfigs = new Map<number, Options>();
+
+  /** 取某标签页对应页面的配置（有缓存就用缓存，没有就按 tab.url 读/建） */
+  async function configForTab(tabId: number): Promise<Options> {
+    const cached = tabConfigs.get(tabId);
+    if (cached) return cached;
+    const tab = await chrome.tabs.get(tabId).catch(() => null);
+    const key = pageKeyOf(tab?.url ?? null);
+    const cfg = await getOptionsForPage(key);
+    tabConfigs.set(tabId, cfg);
+    return cfg;
+  }
+
+  /** 取某页面 key 的配置（每轮刷新用：会话锁定了 pageKey，不再看 tab.url） */
+  async function configForPageKey(pageKey: string): Promise<Options> {
+    const cfg = await getOptionsForPage(pageKey || null);
+    return cfg;
+  }
 
   const ALARM_WATCHDOG = 'ar-watchdog';
   const WATCHDOG_PERIOD_MIN = 1;
@@ -46,7 +73,12 @@ export default defineBackground(() => {
   async function ensureReady(): Promise<void> {
     if (ready) return ready;
     ready = (async () => {
-      options = await getOptions();
+      /*
+       * ADR-037：配置按页面存，不再有一次"全局读取"。
+       * 顺手删掉 ADR-037 之前的全局 `options` 键 —— 用户已确认迁移时**不继承**旧全局配置，
+       * 留着只会让人误以为还有全局配置。
+       */
+      await dropLegacyGlobalOptions();
       const restored = await loadSessions();
       for (const [tabId, s] of restored) {
         // SW 被回收后恢复：按 armedAt + delayMs 重算剩余时间（docs/05 §1.3）
@@ -279,15 +311,19 @@ export default defineBackground(() => {
 
     if (sessions.has(tabId)) await stop(tabId);
 
-    const firstDelay = nextDelayMs(options);
+    // ADR-037：用**这个标签页那一页**的配置（不是全局的，也不是别的页面的）
+    const cfg = await configForTab(tabId);
+    options = cfg; // 同步缓存，供后续无 pageKey 的路径读
+
+    const firstDelay = nextDelayMs(cfg);
     const s = createSession(tabId, tab.url!, firstDelay, token());
     // ADR-036：记下这一轮依据的间隔配置指纹，后续改配置时用它判断要不要重置倒计时
-    s.intervalSig = intervalSignature(options);
+    s.intervalSig = intervalSignature(cfg);
     sessions.set(tabId, s);
 
     await setAutoDiscardable(tabId, false);
-    if (options.keepActive) await ensureKeepActive(tabId);
-    await broadcastInputHold(isInputHoldMode(options), tabId);
+    if (cfg.keepActive) await ensureKeepActive(tabId);
+    await broadcastInputHold(isInputHoldMode(cfg), tabId);
     await updateBadge();
 
     // ADR-005：首轮立即刷新
@@ -338,32 +374,43 @@ export default defineBackground(() => {
   async function resume(tabId: number): Promise<{ ok: true }> {
     const s = sessions.get(tabId);
     if (s && canResume(s.status)) {
+      const cfg = cfgOf(s);
       const remain = s.pausedRemainMs;
       delete s.pausedRemainMs;
 
       // ADR-036：暂停期间用户改了间隔配置 ⇒ 旧的剩余时间已经无意义，按新配置重新计一轮。
       // 这种情况**不立即刷新**（用户刚点继续，期望的是看到倒计时）。
-      const sigChanged = s.intervalSig !== intervalSignature(options);
+      const sigChanged = s.intervalSig !== intervalSignature(cfg);
 
       if (sigChanged) {
-        confirmStarted(s, nextDelayMs(options, s.prevDelayMs));
+        confirmStarted(s, nextDelayMs(cfg, s.prevDelayMs));
       } else if (remain !== undefined && remain > 0) {
         // 接着数：把 armedAt 往回挪，使 "armedAt + delayMs - now === remain"
         s.status = 'start';
         delete s.waitReason;
         s.armedAt = Date.now() - (s.delayMs - remain);
-        s.intervalSig = intervalSignature(options);
+        s.intervalSig = intervalSignature(cfg);
         s.timerToken = token();
         await persist();
         await armTimer(tabId, s.timerToken, remain);
         await updateBadge();
       } else {
         // 没有剩余记录（旧存档 / 剩余刚好为 0）：按新一轮走，并立即刷新
-        confirmStarted(s, nextDelayMs(options, s.prevDelayMs));
+        confirmStarted(s, nextDelayMs(cfg, s.prevDelayMs));
         await executeRound(tabId);
       }
     }
     return { ok: true };
+  }
+
+  /**
+   * 某会话**自己那一页**的配置（ADR-037）。
+   *
+   * 所有和间隔有关的计算都用它，绝不用 `options`（那个只是"最近一次活跃页面"的缓存）——
+   * 否则 A 页正在跑的会话会被 B 页的配置带偏。
+   */
+  function cfgOf(s: Session): Options {
+    return tabConfigs.get(s.tabId) ?? options;
   }
 
   /** 把会话置为"正在等待下一轮"（不立即刷新） */
@@ -375,7 +422,7 @@ export default defineBackground(() => {
     s.prevDelayMs = s.delayMs;
     s.delayMs = delayMs;
     s.armedAt = Date.now();
-    s.intervalSig = intervalSignature(options);
+    s.intervalSig = intervalSignature(cfgOf(s));
     s.timerToken = token();
     void persist();
     void armTimer(s.tabId, s.timerToken, delayMs);
@@ -388,20 +435,21 @@ export default defineBackground(() => {
    * 用户要求：改了刷新间隔后要**立即应用**，而不是等正在进行的倒计时结束。
    * 固定档与随机档都要这样（随机档会重新抽一个新值）。
    *
+   * ADR-037 补充：配置是按页面存的，所以**只有该页面的会话**会被重置
+   * （`tabConfigs` 里对应 tab 的缓存已经是新配置，`cfgOf` 自然读到新值）。
+   *
    * 只处理**正在倒计时**的会话：
    *   - `pause`：用户手动暂停了，倒计时本就停着，不该因为他改了配置就自己跑起来
    *     也不动它的指纹 —— `resume()` 要靠新旧指纹差异判断"暂停期间配置改了没有"
    *   - `wait`：ADR-032 之后已不再产生的旧状态，保守忽略
-   *
-   * 是否真的重置由 `needsRearm` 决定：只有影响间隔长度的字段变了才重置，
-   * 改「强制刷新」之类的无关配置不会打断倒计时。
    */
-  async function rearmSessionsForIntervalChange(): Promise<void> {
-    const sig = intervalSignature(options);
+  async function rearmSessionsForIntervalChange(pageKey: string): Promise<void> {
     for (const s of [...sessions.values()]) {
-      if (!needsRearm(s.status, s.intervalSig, sig)) continue;
+      if (s.pageKey !== pageKey) continue; // 只动这一页的会话
+      const cfg = cfgOf(s);
+      if (!needsRearm(s.status, s.intervalSig, intervalSignature(cfg))) continue;
       // 重新抽/重算下一轮间隔，然后从现在开始重新计时
-      confirmStarted(s, nextDelayMs(options, s.prevDelayMs));
+      confirmStarted(s, nextDelayMs(cfg, s.prevDelayMs));
     }
   }
 
@@ -423,18 +471,24 @@ export default defineBackground(() => {
       return;
     }
 
+    // ADR-037：整轮刷新都用**会话锁定那一页**的配置（锁定值见 createSession 的 pageKey）。
+    // 即使 follow 模式页面自己跳走了，也不会突然改用新页面的配置。
+    const cfg = await configForPageKey(s.pageKey);
+    tabConfigs.set(tabId, cfg);
+    options = cfg;
+
     // ADR-022：XHR 的 selector / 触发方式按页面隔离，且**锁定会话启动时的页面**。
     // 用 s.pageKey（而不是当前 tab.url）⇒ follow 模式下页面自己跳走了也不会改去点新页面。
     const pageEntry = s.pageKey ? await getSelectorForUrl(s.pageKey) : null;
 
     const outcome = await runRefresh(tabId, {
-      refreshType: options.refreshType,
-      hardRefresh: options.hardRefresh,
-      redirection: options.redirection,
+      refreshType: cfg.refreshType,
+      hardRefresh: cfg.hardRefresh,
+      redirection: cfg.redirection,
       autoClickSelector: pageEntry?.selector ?? '',
       autoClickAction: pageEntry?.action ?? DEFAULT_CLICK_ACTION,
       canonicalUrl: s.canonicalUrl,
-      keepActive: options.keepActive,
+      keepActive: cfg.keepActive,
       ensureKeepActive,
     });
 
@@ -449,7 +503,7 @@ export default defineBackground(() => {
       await persist();
       await updateBadge();
       // 不计次数，但仍按间隔继续重试（用户可选改选择器后自愈）
-      confirmStarted(s, nextDelayMs(options, s.prevDelayMs));
+      confirmStarted(s, nextDelayMs(cfg, s.prevDelayMs));
       return;
     }
 
@@ -457,11 +511,11 @@ export default defineBackground(() => {
     delete s.failedRounds;
 
     // follow 模式：每轮把当前 URL 记为下一次的基准；canonical 模式不改写（docs/05 §4）
-    if (options.redirection === 'follow' && tab.url) s.tabUrl = tab.url;
+    if (cfg.redirection === 'follow' && tab.url) s.tabUrl = tab.url;
 
     s.count += 1;
 
-    if (reachedLimit(options, s.count)) {
+    if (reachedLimit(cfg, s.count)) {
       sessions.delete(tabId);
       await persist();
       await disarmTimer(tabId);
@@ -471,7 +525,7 @@ export default defineBackground(() => {
       return;
     }
 
-    confirmStarted(s, nextDelayMs(options, s.prevDelayMs));
+    confirmStarted(s, nextDelayMs(cfg, s.prevDelayMs));
   }
 
   // ────────────────────────────────────────────────────────────── 交互
@@ -510,7 +564,8 @@ export default defineBackground(() => {
 
     /* 占用解除：只有"因占用而暂停"的会话才恢复；手动暂停的保持暂停 */
     if (s.status === 'pause' && s.waitReason === 'input-hold') {
-      confirmStarted(s, nextDelayMs(options, s.prevDelayMs));
+      const cfg = cfgOf(s);
+      confirmStarted(s, nextDelayMs(cfg, s.prevDelayMs));
     }
   }
 
@@ -589,8 +644,10 @@ export default defineBackground(() => {
       if (tabId !== undefined) {
         void (async () => {
           const s = sessions.get(tabId);
-          if (s && options?.keepActive) await ensureKeepActive(tabId);
-          if (s) await broadcastInputHold(isInputHoldMode(options), tabId);
+          if (!s) return;
+          const cfg = cfgOf(s);
+          if (cfg.keepActive) await ensureKeepActive(tabId);
+          await broadcastInputHold(isInputHoldMode(cfg), tabId);
         })();
       }
       sendResponse({ ok: true });
@@ -605,8 +662,12 @@ export default defineBackground(() => {
         const tab = await chrome.tabs.get(tabId).catch(() => null);
         const s = sessions.get(tabId) ?? null;
         const currentKey = pageKeyOf(tab?.url);
+        // ADR-037：面板看到的是**当前这个标签页那一页**的配置，不是全局的
+        const cfg = await getOptionsForPage(currentKey);
+        tabConfigs.set(tabId, cfg);
+        options = cfg;
         const snapshot: StateSnapshot = {
-          options,
+          options: cfg,
           session: s,
           tabUrl: tab?.url ?? '',
           // ADR-022：当前页面的 per-page 配置（没有就 null，不回落）
@@ -703,25 +764,49 @@ export default defineBackground(() => {
     if (msg?.type === 'OPTIONS_PATCH') {
       void (async () => {
         await ensureReady();
-        const patch = (msg as PopupCommand & { patch: Partial<Options> }).patch;
-        const result = applyPatch(options, patch);
+        const m = msg as PopupCommand & { patch: Partial<Options>; tabId?: number };
+        const patch = m.patch;
+
+        /*
+         * ADR-037：配置按页面存，所以 patch 必须落到**某个页面的 key** 上。
+         * 优先用消息里带的 tabId（popup 一定会带）；缺省时退回"最近活跃那页"的缓存键。
+         */
+        let pageKey: string | null = null;
+        if (typeof m.tabId === 'number') {
+          const tab = await chrome.tabs.get(m.tabId).catch(() => null);
+          pageKey = pageKeyOf(tab?.url);
+        }
+        if (!pageKey) {
+          sendResponse({ ok: false, issues: [{ field: 'schemaVersion', code: 'err_page_unavailable' }] });
+          return;
+        }
+
+        // 基于**这一页**当前配置做校验与合并（不是全局，也不是别的页面）
+        const current = await getOptionsForPage(pageKey);
+        const result = applyPatch(current, patch);
         if (!result.ok) {
           sendResponse({ ok: false, issues: result.issues });
           return;
         }
+
+        await setOptionsForPage(pageKey, result.options);
+        if (typeof m.tabId === 'number') tabConfigs.set(m.tabId, result.options);
         options = result.options;
-        await setOptions(options);
-        // 间隔配置变了 ⇒ 放弃当前倒计时、立即按新配置重新计时（ADR-036）
-        await rearmSessionsForIntervalChange();
+
+        // 间隔配置变了 ⇒ 该页面上正在跑的会话放弃倒计时、立即按新配置重新计时（ADR-036）
+        await rearmSessionsForIntervalChange(pageKey);
+
         // 开关改动即时生效：keep-active / 输入框占用监视 需要同步到内容脚本
         if (patch.keepActive !== undefined || patch.interactionMode !== undefined) {
-          for (const tabId of sessions.keys()) {
-            if (options.keepActive) await ensureKeepActive(tabId);
+          for (const [tabId, s] of sessions) {
+            if (s.pageKey !== pageKey) continue; // 只影响这一页的会话
+            const cfg = cfgOf(s);
+            if (cfg.keepActive) await ensureKeepActive(tabId);
             else await clearKeepActive(tabId);
+            await broadcastInputHold(isInputHoldMode(cfg), tabId);
           }
-          await broadcastInputHold(isInputHoldMode(options));
         }
-        sendResponse({ ok: true, options });
+        sendResponse({ ok: true, options: result.options });
       })();
       return true;
     }
@@ -734,15 +819,26 @@ export default defineBackground(() => {
   });
 
   chrome.tabs.onRemoved.addListener((tabId) => {
+    // ADR-037：会话缓存与配置缓存一起清，避免 tabId 被复用后读到上一任标签页的配置
+    tabConfigs.delete(tabId);
     if (!sessions.has(tabId)) return;
     sessions.delete(tabId);
     void persist();
     void disarmTimer(tabId);
   });
 
-  // 全局配置变化（包括 popup 之外的写入）⇒ 刷新内存快照
-  watchOptions((next) => {
-    options = next;
+  /*
+   * ADR-037：没有"全局配置变化"这回事了（配置按页面存）。
+   * 这里保留 per-page 表的监听，只用于把**当前活跃标签页**那份配置刷进缓存 ——
+   * 这样即使用户在别处（比如另一个面板实例）改了这一页的配置，SW 的缓存也不会过期。
+   */
+  watchPageOptions(() => {
+    void (async () => {
+      for (const [tabId, s] of [...sessions]) {
+        const fresh = await getOptionsForPage(s.pageKey);
+        tabConfigs.set(tabId, fresh);
+      }
+    })();
   });
 
   chrome.runtime.onInstalled.addListener(() => void ensureReady());

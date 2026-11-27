@@ -403,6 +403,20 @@ T-43（浏览器重启）、T-46（与 ARP 并存）。这三项的代码路径�
 | 随机档不会因去重卡住 | ✅ | 单测：旧值 10s 不在新区间 [20,20] 内 ⇒ 直接返回 20000ms |
 | 指纹不含 avoidRepeatRandom | ✅ | 单测：指纹只由 mode/fixed/min/max 决定 |
 
+### 全部配置改为 URL 作用域（ADR-037，第十七轮，v0.7.0）
+
+| 用例 | 结果 | 证据 |
+| --- | --- | --- |
+| A 页独立配置 | ✅ | A 改成 `{fixedSeconds:7, refreshType:'xhr'}` 后，B 仍是 `{10, 'full'}` |
+| B 页独立配置 | ✅ | B 改成 `random:[30,45]` 后，A 仍是 `fixed:7` |
+| 存储表结构 | ✅ | `pageOptions` 里两页各一条完整 `Options`，互不干扰 |
+| 会话用自己那页的配置 | ✅ | A 页启动 ⇒ `delayMs=7000`、`intervalSig='fixed:7'` |
+| 改 B 页不重置 A 的倒计时 | ✅ | 改 B 配置后 A 的 `armedAt` 不变 |
+| 改 A 页自己 ⇒ 重置 A 的倒计时 | ✅ | 20→8 秒后 `remainSec 19 → 8`、`sig='fixed:8'` |
+| 旧全局 `options` 键被删除 | ✅ | 重载后 `chrome.storage.local` 里已无 `options` |
+| 未配置页面用默认值 | ✅ | 新建的 A/B 两页读到都是 10 秒 / 完整刷新 |
+| 单测：清洗与 LRU | ✅ | `tests/page-options.test.ts` 8 例（脏形状、旧形状、容量淘汰） |
+
 ### 回归
 
 | 用例 | 结果 | 证据 |

@@ -4,7 +4,8 @@ import type { PopupCommand, StateSnapshot } from '@/lib/messages';
 import { DEFAULT_OPTIONS, type ClickAction, type Options } from '@/lib/options';
 import { getEntryByKey, watchPageSelectors, type PageSelectorEntry } from '@/lib/page-selectors';
 import type { Session } from '@/lib/session';
-import { watchOptions } from '@/lib/storage';
+import { watchPageOptions } from '@/lib/page-options';
+import { readOptionsCollapsed, writeOptionsCollapsed } from '@/lib/storage';
 import { Header } from '@/components/Header';
 import { IntervalSection } from '@/components/IntervalSection';
 import { OptionsSection } from '@/components/OptionsSection';
@@ -80,8 +81,20 @@ export default function App() {
     })();
   }, []);
 
-  // 配置变化（含本面板发起的 patch，storage.onChanged 会广播回来）
-  useEffect(() => watchOptions(setOptions), []);
+  /**
+   * 配置回显（ADR-037：配置按页面存）。
+   *
+   * 订阅 per-page 配置表，变化时只取**当前页面那一份**刷进 state。
+   * 用 ref 存 pageKey（订阅只挂一次，闭包捕获会停在首屏那个值）。
+   */
+  useEffect(() => {
+    return watchPageOptions((table) => {
+      const key = pageKeyRef.current;
+      if (!key) return;
+      const entry = table[key];
+      if (entry) setOptions(entry.options);
+    });
+  }, []);
 
   // 会话状态没有推送通道，靠轻轮询（面板通常只开几秒，成本可忽略）
   useEffect(() => {
@@ -128,15 +141,17 @@ export default function App() {
   const patch = useMemo(
     () =>
       async (next: Partial<Options>): Promise<{ ok: boolean; code?: string }> => {
+        if (tabId === null) return { ok: false, code: 'err_page_unavailable' };
         const res = await send<{ ok: boolean; issues?: { field: string; code: string }[] }>({
           type: 'OPTIONS_PATCH',
+          tabId,
           patch: next,
         });
         if (!res) return { ok: false };
         if (!res.ok) return { ok: false, code: res.issues?.[0]?.code };
         return { ok: true };
       },
-    [],
+    [tabId],
   );
 
   const control = useMemo(
