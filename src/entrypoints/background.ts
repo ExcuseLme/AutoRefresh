@@ -1,5 +1,5 @@
 import { isInputHoldMode } from '@/lib/interaction';
-import { nextDelayMs } from '@/lib/interval';
+import { intervalSignature, needsRearm, nextDelayMs } from '@/lib/interval';
 import {
   clearKeepActive,
   ensureKeepActive,
@@ -281,6 +281,8 @@ export default defineBackground(() => {
 
     const firstDelay = nextDelayMs(options);
     const s = createSession(tabId, tab.url!, firstDelay, token());
+    // ADR-036：记下这一轮依据的间隔配置指纹，后续改配置时用它判断要不要重置倒计时
+    s.intervalSig = intervalSignature(options);
     sessions.set(tabId, s);
 
     await setAutoDiscardable(tabId, false);
@@ -339,11 +341,18 @@ export default defineBackground(() => {
       const remain = s.pausedRemainMs;
       delete s.pausedRemainMs;
 
-      if (remain !== undefined && remain > 0) {
+      // ADR-036：暂停期间用户改了间隔配置 ⇒ 旧的剩余时间已经无意义，按新配置重新计一轮。
+      // 这种情况**不立即刷新**（用户刚点继续，期望的是看到倒计时）。
+      const sigChanged = s.intervalSig !== intervalSignature(options);
+
+      if (sigChanged) {
+        confirmStarted(s, nextDelayMs(options, s.prevDelayMs));
+      } else if (remain !== undefined && remain > 0) {
         // 接着数：把 armedAt 往回挪，使 "armedAt + delayMs - now === remain"
         s.status = 'start';
         delete s.waitReason;
         s.armedAt = Date.now() - (s.delayMs - remain);
+        s.intervalSig = intervalSignature(options);
         s.timerToken = token();
         await persist();
         await armTimer(tabId, s.timerToken, remain);
@@ -366,10 +375,34 @@ export default defineBackground(() => {
     s.prevDelayMs = s.delayMs;
     s.delayMs = delayMs;
     s.armedAt = Date.now();
+    s.intervalSig = intervalSignature(options);
     s.timerToken = token();
     void persist();
     void armTimer(s.tabId, s.timerToken, delayMs);
     void updateBadge();
+  }
+
+  /**
+   * 间隔配置变了 ⇒ 放弃当前倒计时、按新配置重新计时（ADR-036）。
+   *
+   * 用户要求：改了刷新间隔后要**立即应用**，而不是等正在进行的倒计时结束。
+   * 固定档与随机档都要这样（随机档会重新抽一个新值）。
+   *
+   * 只处理**正在倒计时**的会话：
+   *   - `pause`：用户手动暂停了，倒计时本就停着，不该因为他改了配置就自己跑起来
+   *     也不动它的指纹 —— `resume()` 要靠新旧指纹差异判断"暂停期间配置改了没有"
+   *   - `wait`：ADR-032 之后已不再产生的旧状态，保守忽略
+   *
+   * 是否真的重置由 `needsRearm` 决定：只有影响间隔长度的字段变了才重置，
+   * 改「强制刷新」之类的无关配置不会打断倒计时。
+   */
+  async function rearmSessionsForIntervalChange(): Promise<void> {
+    const sig = intervalSignature(options);
+    for (const s of [...sessions.values()]) {
+      if (!needsRearm(s.status, s.intervalSig, sig)) continue;
+      // 重新抽/重算下一轮间隔，然后从现在开始重新计时
+      confirmStarted(s, nextDelayMs(options, s.prevDelayMs));
+    }
   }
 
   /**
@@ -678,6 +711,8 @@ export default defineBackground(() => {
         }
         options = result.options;
         await setOptions(options);
+        // 间隔配置变了 ⇒ 放弃当前倒计时、立即按新配置重新计时（ADR-036）
+        await rearmSessionsForIntervalChange();
         // 开关改动即时生效：keep-active / 输入框占用监视 需要同步到内容脚本
         if (patch.keepActive !== undefined || patch.interactionMode !== undefined) {
           for (const tabId of sessions.keys()) {

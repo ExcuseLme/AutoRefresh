@@ -683,6 +683,42 @@
     | storage 广播延迟 | **5ms** |
     | 真实 UI 点「双击」到 aria-selected 变化 | **21ms**（之前要等 ≤500ms 轮询） |
     | 互切 double→single→double | 三次都正确落库 |
+
+### ADR-036 · 改间隔配置立即重置倒计时（固定与随机都适用）
+
+- **背景**（用户需求）：
+  > "若当前处于开启自动刷新状态时，修改了刷新间隔，当前不会立即应用新的刷新间隔配置，
+  > 而是会等待正在进行的倒计时结束后才会从新配置的刷新间隔中取值并进行下一轮的刷新倒计时。
+  > 我希望在修改了刷新间隔后放弃当前的倒计时，立即读取新的刷新间隔并重新开始倒计时，
+  > 对固定刷新间隔和随机刷新间隔都应该这样"
+- **根因**：`OPTIONS_PATCH` 只做了 `options = result.options` + 落库，
+  **没有任何一处去动正在跑的会话**。会话的 `delayMs` / `armedAt` 是在上一轮
+  `confirmStarted()` 时就定死的，所以新配置只能等到下一轮 `executeRound()` 结束才被读到。
+- **决策**：
+  1. `Session` 新增 `intervalSig?: string`：记下**这一轮倒计时开始时**依据的间隔配置指纹。
+  2. `src/lib/interval.ts` 新增 `intervalSignature(opt)`：只对
+     `intervalMode` / `fixedSeconds` / `randomMinSeconds` / `randomMaxSeconds` 取指纹。
+     **不含** `avoidRepeatRandom`（它只影响取值的去重，不改变间隔量级）。
+     随机档用 `random:{min}-{max}`（并像 `nextDelayMs` 那样把 min>max 归一），
+     不能用 `nextDelayMs()` 的返回值当指纹 —— 随机档每次调用必然不同，没法判断"变没变"。
+  3. 新增 `needsRearm(status, prevSig, nextSig)`：只在
+     **`status === 'start'`**（正在倒计时）且**指纹真的变了**时返回 true。
+     - `pause` 不重置：用户手动暂停了，改配置不该让它自己跑起来
+     - 也不去改暂停会话的 `intervalSig` —— `resume()` 要靠新旧指纹差异判断
+       "暂停期间配置改了没有"（见 ADR-034 的续数逻辑）
+  4. `OPTIONS_PATCH` 在落库后调用 `rearmSessionsForIntervalChange()`：
+     对需要重置的会话执行 `confirmStarted(s, nextDelayMs(options, s.prevDelayMs))`，
+     即**放弃当前倒计时 + 重新抽/重算新间隔 + 立刻 arm 新计时器 + 刷新徽章**。
+- **副作用与取舍**：
+  - 随机档重置时会**重新抽一个新值**（符合"立即读取新的刷新间隔"）。
+  - 只改「强制刷新」/「让页面在后台保持活动」等与间隔无关的选项时，
+    指纹不变 ⇒ **不会**打断正在跑的倒计时（避免"改个无关开关就被重置"）。
+  - 重置**不会**立即刷新一轮（不是 `executeRound`），只是从 0 开始新的倒计时。
+    "立即刷新"与"立即重新倒计时"是两件事，用户要的是后者。
+  - 旧会话（本特性上线前创建、`intervalSig` 为 undefined）被视为"变了"，
+    用户改间隔时同样立即生效，不为兼容旧数据而牺牲需求。
+- **验证**：单测 `tests/interval-rearm.test.ts`（13 例）覆盖指纹稳定性、
+  跨模式区分、`needsRearm` 的四种状态组合、以及"重置后确实取到新配置的值"（固定 + 随机）。
 ## 2. 开放问题（**已全部关闭**，结论见下表；实现按结论落地）
 
 | ID | 问题 | 结论（用户已确认或已采纳默认） | 落地 |
@@ -749,3 +785,4 @@
 | 2026-11-25 | **ADR-032**（交互只留两档：稳定刷新 / 输入框占用时暂停；schema v3→v4；v0.3.0 → v0.4.0） | lead |
 | 2026-11-25 | **ADR-033**（readOnly/disabled 输入框不算占用）+ **ADR-034**（暂停记住剩余时间；v0.4.0 → v0.4.1） | lead |
 | 2026-11-26 | **ADR-035**（触发方式独立于 selector；per-page 配置走 storage 广播即时回显；v0.4.1 → v0.5.0） | lead |
+| 2026-11-27 | **ADR-036**（改间隔配置立即重置倒计时；v0.5.0 → v0.6.0） | lead |

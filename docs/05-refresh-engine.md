@@ -251,6 +251,32 @@ ARP 内容脚本每秒 `refreshKeepAlive` 帮 SW 保活。本扩展不需要（�
 SW 用于（a）确认内容脚本还活着（b）检测 tab 是否已被导航到别的页面（`sender.tab.url !== session.tabUrl`）。
 不是必须项，可放到 M3 之后。
 
+### 5.4 改间隔配置后立即重置倒计时（ADR-036）
+
+会话的 `delayMs` / `armedAt` 在每轮 `confirmStarted()` 时就定死了，
+所以「改了配置」对**正在倒计时**的会话本来不会生效，要等这一轮走完才被读到。
+
+`Session.intervalSig` 记下这一轮依据的间隔配置指纹；`OPTIONS_PATCH` 落库后调用
+`rearmSessionsForIntervalChange()`：
+
+```
+新指纹 = intervalSignature(新 options)
+for 每个会话：
+  若 needsRearm(status, s.intervalSig, 新指纹)：
+      confirmStarted(s, nextDelayMs(新 options, s.prevDelayMs))   // 放弃当前倒计时，重新计时
+```
+
+| 条件 | 行为 |
+| --- | --- |
+| `status === 'start'` 且指纹变了 | **重置**：放弃当前倒计时，按新配置重新 arm |
+| `status === 'start'` 但指纹没变 | 不动（只改了与间隔无关的选项） |
+| `status === 'pause'` | 不动（且**不改它的指纹**，供 `resume` 判断暂停期间配置是否变过） |
+
+指纹只含 `intervalMode` / `fixedSeconds` / `randomMin` / `randomMax`，
+不含 `avoidRepeatRandom`（它只影响随机取值去重，不改变量级）。
+
+注意：重置**不刷新一轮**，只是从 0 开始新的倒计时。"立即刷新"与"立即重新倒计时"是两件事。
+
 ## 6. 让页面在后台保持活动（A2）
 
 三层机制，缺一不可：
